@@ -1,0 +1,60 @@
+---
+title: "Building a sub-second Hindi voice agent: the latency budget"
+publishedAt: "2026-10-11"
+summary: "Humans reply in about 200 ms. Most voice agents take seconds, and Hindi ones take longer. Here is the stage-by-stage latency budget I'm designing my own voice stack around, and where I think the time actually goes."
+---
+
+<Callout tone="target">
+**Work in progress.** This post describes a system I'm building now. Every number below is a **target**, not a measurement. I'll publish measured numbers when they exist, next to these.
+</Callout>
+
+In production I saw Hindi phone replies take about 5 seconds to start, against about 2 seconds in English ([the full story](/blog/why-voice-agents-break-on-hindi)). People reply to each other in roughly 200 ms. My goal for my own stack is **~800 ms p50 voice-to-voice** in Hindi.
+
+## Start from a budget, not a model
+
+"Make it faster" is not a plan. A latency budget is: split the target across every stage between the caller finishing a sentence and hearing the first syllable of the reply, then design each stage to hit its slice.
+
+<Diagram
+  name="latency"
+  alt="Target voice-to-voice latency budget of about 800 ms: network 60, end-of-turn 200, STT final 150, LLM first token 220, TTS first audio 120, network 50. Target, not yet measured."
+  caption="Target budget. The dashed line marks ~200 ms, roughly how fast humans reply."
+/>
+
+| Stage | Target | Why it gets that slice |
+|---|---|---|
+| Network in | 60 ms | WebRTC, nearest region |
+| End-of-turn | 200 ms | The biggest slice, and the hardest to cut safely |
+| STT final | 150 ms | Streaming ASR, so most text exists before the turn ends |
+| LLM first token | 220 ms | Small LoRA-tuned model, INT8, speculative decoding |
+| TTS first audio | 120 ms | Stream the first phrase, don't wait for the full reply |
+| Network out | 50 ms | Same path back |
+| **Total** | **~800 ms** | |
+
+## End-of-turn is the real bottleneck
+
+Look at the budget again: the largest slice is not a model at all. It is deciding that the caller has stopped talking.
+
+Wait too little and you interrupt people mid-thought, which on Hindi calls already happens. Wait too long and every reply feels slow. A fixed silence timeout cannot win both ways, especially in code-mixed Hinglish where pauses fall in different places.
+
+That is why the first model I'm building is a small **Hinglish turn detector** that predicts the end of a turn instead of waiting for silence, based on [Voice Activity Projection](https://arxiv.org/abs/2205.09812). Target: ~30% fewer false interruptions than VAD alone.
+
+## The rest of the stack
+
+- **STT:** a Hindi/Marathi ASR model I'm training, following [Whisper](https://arxiv.org/abs/2212.04356) and [Conformer + RNN-T](https://arxiv.org/abs/2005.08100) for streaming.
+- **LLM:** a small model tuned with [LoRA](https://arxiv.org/abs/2106.09685), quantised to INT8, with [speculative decoding](https://arxiv.org/abs/2211.17192) for a faster first token.
+- **TTS:** a Hindi voice following [StyleTTS 2](https://arxiv.org/abs/2306.07691), streamed phrase by phrase.
+- **Orchestrator:** written from scratch in Python asyncio: VAD, end-of-turn, barge-in, and cancelling a reply the moment the caller speaks.
+
+<Diagram
+  name="architecture"
+  alt="Architecture of a real-time voice agent: caller over WebRTC to a LiveKit room, an agent worker running VAD, STT, LLM with tools and streamed TTS, with script-aware guards."
+  caption="The production shape I already run, which my own stack replaces piece by piece."
+/>
+
+## How I'll know it worked
+
+Each stage gets its own timer, per language, in every session, so a regression shows up as "Hindi TTS first audio got slower" instead of "calls feel slow". The second target is cost: **~5× lower cost per minute** than hosted APIs, by running the models myself.
+
+<Callout tone="target">
+Targets: ~800 ms p50 voice-to-voice, ~5× lower cost/min. Status: in progress. Follow along on [GitHub](https://github.com/ANDROIDHASSAN).
+</Callout>

@@ -1,0 +1,47 @@
+# Ships voice-agent/ to LiveKit Cloud. The website deploys itself through Vercel's Git integration.
+name: voice-agent
+
+on:
+  push:
+    branches: [main]
+    paths: ["voice-agent/**", ".github/workflows/voice-agent.yml"]
+  pull_request:
+    paths: ["voice-agent/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-agent-deploy
+  cancel-in-progress: false # never cut a deploy off halfway
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: voice-agent } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: voice-agent/requirements.txt }
+      - run: pip install -r requirements.txt
+      - name: Import every module (catches syntax errors and broken imports)
+        run: python -c "import agent, brain, llm, stt, tts"
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && hashFiles('voice-agent/livekit.toml') != ''
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: voice-agent } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LiveKit CLI (pinned)
+        run: |
+          curl -sSfL https://github.com/livekit/livekit-cli/releases/download/v2.18.0/lk_2.18.0_linux_amd64.tar.gz | tar -xz -C /usr/local/bin lk
+          lk --version
+      - name: Deploy (builds the Dockerfile on LiveKit Cloud; runtime secrets stay stored there)
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+        run: lk agent deploy --yes .

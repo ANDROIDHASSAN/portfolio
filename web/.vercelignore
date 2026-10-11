@@ -1,0 +1,7 @@
+# Never upload secrets: env vars are set in the Vercel project, not shipped as files.
+.env*
+!.env.example
+node_modules
+.next
+.content-collections
+tsconfig.tsbuildinfo

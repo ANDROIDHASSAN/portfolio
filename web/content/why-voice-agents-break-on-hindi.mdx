@@ -1,0 +1,87 @@
+---
+title: "Why voice agents break on Hindi: 4 failure modes"
+publishedAt: "2026-10-11"
+summary: "A voice agent that works in English can fail on Hindi and Marathi in four separate places: guards that only read English, STT that hallucinates, latency that compounds, and turn-taking that cuts people off. Findings from running voice interviewers in production."
+---
+
+I run the AI and real-time stack behind voice interviewers that handle **1,000+ concurrent interviews in 42+ languages**. In English the pipeline is boring, which is the goal. In Hindi and Marathi it broke in four different places, and none of them showed up as an error in the logs.
+
+This post walks through each one: where it lives in the pipeline, what it looked like in production, and how to check for it in your own agent.
+
+<PipelineFlow />
+
+## 1. Guards that only read English
+
+Most production agents run text checks around the LLM: did the candidate actually answer, is the reply on topic, did the model repeat itself. These checks often use fuzzy string similarity, and they are usually written and tuned in English.
+
+A correct answer in Devanagari has almost no characters in common with an English reference, so the similarity score collapses. In production a Devanagari reply scored **0.39** against a pass threshold of **0.50**, so the guard failed it.
+
+<GuardScoreChart />
+
+Nothing crashed. The agent simply behaved as if the candidate had not answered. That is the dangerous part of this class of bug: from the logs, it looks like normal operation.
+
+**The shape of the fix** is to make the comparison script-aware: normalise both sides into one script before you score them, and know which script you are looking at before you pick a threshold. A simplified sketch, not production code:
+
+```python
+import unicodedata
+
+def script_of(text: str) -> str:
+    # "deva" if most letters are Devanagari, else "latn"
+    deva = sum(0x0900 <= ord(ch) <= 0x097F for ch in text)  # Devanagari block
+    letters = sum(ch.isalpha() for ch in text) or 1
+    return "deva" if deva / letters > 0.5 else "latn"
+
+def comparable(text: str) -> str:
+    text = unicodedata.normalize("NFC", text).casefold()
+    # Transliterate Devanagari to Latin here, so that "नमस्ते" and "namaste"
+    # land in the same alphabet before any fuzzy matching happens.
+    return text
+```
+
+We shipped the real fix behind a feature flag, so it could be switched on per language and rolled back without a deploy. I'm turning the general version into an open library, [indic-guard](/#projects).
+
+## 2. STT that hallucinates on Marathi
+
+Speech-to-text models are trained on far less Marathi than Hindi, and far less Hindi than English. When a model is unsure, it does not always return low-confidence text. Sometimes it returns fluent text that nobody said.
+
+On Marathi, the STT hallucinated in **10 of 15** turns.
+
+<TurnWaffle />
+
+Everything downstream trusts that text. The LLM replies to it and anything that scores the conversation scores it, so a transcription problem quietly becomes a conversation problem.
+
+**How to catch it:**
+
+- Log the STT language and confidence for every turn, not just the transcript.
+- Spot-check transcripts against audio per language. A WER that looks fine on average can hide one language that is broken.
+- Treat "fluent but unrelated to the question" as a signal, not as a good answer.
+
+## 3. Latency that compounds
+
+On phone screening calls, Hindi replies took about **5 seconds** to start, against about **2 seconds** in English.
+
+<ReplyLatencyChart />
+
+There is no single slow stage to blame. A voice agent's reply time is the sum of every hop: end-of-turn detection, final STT, the LLM's first token and the TTS engine's first audio. A non-English language can be a little slower at several of these at once:
+
+- **Tokens:** many LLM tokenizers split Devanagari into more tokens per word than English, so the same answer takes longer to generate.
+- **Voices:** Hindi TTS voices can have a slower time-to-first-audio than the English voice of the same provider.
+- **Endpointing:** turn detection tuned on English pauses may wait longer before deciding a Hindi speaker is done.
+
+The only reliable way to find out is to measure each stage per language instead of looking at total latency. That is why I'm building a per-stage benchmark for Indian speech, [IndicVoiceBench](/#projects).
+
+## 4. Turn-taking that cuts people off
+
+The fourth failure is the one callers notice first: the agent interrupts them, or cuts off its own speech when it hears noise. On Hindi calls we saw both cut-off speech and interruptions.
+
+Voice activity detection only answers "is someone making sound?". It does not know whether a speaker has finished a thought. Code-mixed Hinglish makes this harder, because pauses and fillers land in different places than in English.
+
+The research answer is to predict turn-taking instead of reacting to silence. [Voice Activity Projection](https://arxiv.org/abs/2205.09812) (Ekstedt & Skantze, 2022) does exactly that, and I'm adapting the idea to Hinglish as a small end-of-turn model.
+
+## What to take away
+
+<Callout>
+If your agent works in English, test it in each language you claim to support, per stage: guards, STT, latency and turn-taking. None of these four failures throws an exception. They only show up when someone looks at the conversation.
+</Callout>
+
+I'm rebuilding these pieces from the papers up, starting with Hindi and Marathi. If you're building voice agents for India, [email me](mailto:hassankazinasik@gmail.com).

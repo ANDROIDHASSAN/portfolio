@@ -1,0 +1,18 @@
+# Secrets never leave this machine: they live in Vercel, LiveKit Cloud and GitHub Secrets.
+.env*
+!.env.example
+
+# Private working files, not part of the published site
+*.pdf
+!web/public/hassan-kazi-resume.pdf
+PORTFOLIO_PROMPT.md
+assets/
+design/
+site/
+
+# Build output and dependencies
+node_modules/
+.next/
+.venv/
+__pycache__/
+.DS_Store

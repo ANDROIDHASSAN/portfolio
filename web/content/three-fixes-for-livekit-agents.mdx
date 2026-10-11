@@ -1,0 +1,60 @@
+---
+title: "Three bugs I fixed in livekit/agents"
+publishedAt: "2026-10-11"
+summary: "A recording that showed the wrong duration, a shutdown that could hang forever, and a stray XML tag that split TTS output in the wrong place. Three small upstream PRs to livekit/agents, each with a test that fails on main."
+---
+
+I run production voice agents on [LiveKit Agents](https://github.com/livekit/agents). When something breaks I'd rather fix it upstream than patch around it locally. These are my first three PRs. All three were in review when I wrote this; the live status is on [my home page](/#open-source).
+
+Each one follows the same rule: **reproduce it in a test that fails on `main`, then make the smallest change that passes it.**
+
+## 1. Recordings that report the wrong length
+
+[PR #7740](https://github.com/livekit/agents/pull/7740) · `feat(voice): add bit_rate and constant_bit_rate options to RecorderIO`
+
+`RecorderIO` always encoded with Opus defaults: variable bit rate. A session almost always opens on silence, which VBR packs into tiny 3-byte packets. Players that estimate an Ogg Opus duration from the file size (macOS Finder, QuickLook, Preview) then showed a **3:32 recording as 6:53 or longer**.
+
+Only a constant bit rate fixes the estimate, so the PR adds two keyword arguments, with defaults that keep today's behaviour:
+
+```python
+RecorderIO(agent_session=session, bit_rate=128_000, constant_bit_rate=True)
+```
+
+The test that proves it: at 128 kb/s every 20 ms packet is exactly 320 bytes, silence or tone, which matches LiveKit Egress recordings. An invalid bit rate now fails at construction instead of failing silently on the encoder thread.
+
+`+108 −0 · 2 files · 34 tests passed`
+
+## 2. A shutdown that could hang forever
+
+[PR #7741](https://github.com/livekit/agents/pull/7741) · `fix(voice): don't hang or buffer audio when the recorder encoder fails`
+
+The recorder's encode thread did its setup (create the directory, open the file, add the Opus stream) **before** its `try` block. If any of that raised, the thread died without resolving the future that `aclose()` waits on. So `RecorderIO.aclose()` waited forever, and so did `AgentSession.aclose()` and job shutdown.
+
+Worse, nothing drained the audio queue after the thread died, so every frame for the rest of the session piled up in memory.
+
+The fix moves setup inside the `try`, routes every queue write through one guard that drops frames once the encoder has exited, and starts each run with a fresh queue. Most of the diff is re-indentation: `git diff -w` shows about 15 changed lines.
+
+`+101 −30 · 2 files · 4,966 unit tests passed`
+
+## 3. A stray tag that split TTS output
+
+[PR #7742](https://github.com/livekit/agents/pull/7742) · `fix(tokenize): ignore stray closing tags in the XML depth check`
+
+With `xml_aware=True`, the sentence tokenizer keeps a wrapping tag such as `<emotion>…</emotion>` in one TTS chunk. It decides that with a depth counter, which went **negative** on a closing tag whose opener wasn't in the text, then cancelled out the next real opening tag:
+
+```python
+_has_unclosed_xml_tags("</b> Now <emotion value='sad'>I am sorry.")
+# main: False   expected: True
+```
+
+So the emotion span got split across TTS chunks. The fix is one line: clamp the counter at zero.
+
+`+20 −1 · 2 files · 109 tests passed`
+
+## What I took from it
+
+<Callout>
+Small, boring PRs get reviewed. Each of these states the problem, shows a failing test, makes the smallest change, and lists exactly what it does not touch.
+</Callout>
+
+Next on my list is Indic-language work in the speech plugins, where the failure modes from [this post](/blog/why-voice-agents-break-on-hindi) live.
