@@ -7,6 +7,7 @@ on:
     paths: ["voice-agent/**", ".github/workflows/voice-agent.yml"]
   pull_request:
     paths: ["voice-agent/**"]
+  workflow_dispatch: # "Run workflow" button: redeploy without a code change (e.g. after rotating keys)
 
 permissions:
   contents: read
@@ -29,7 +30,7 @@ jobs:
 
   deploy:
     needs: check
-    if: github.event_name == 'push' && hashFiles('voice-agent/livekit.toml') != ''
+    if: github.event_name != 'pull_request' # voice-agent/livekit.toml (from the one-time `lk agent create`) names the agent
     runs-on: ubuntu-latest
     environment: production
     defaults: { run: { working-directory: voice-agent } }
