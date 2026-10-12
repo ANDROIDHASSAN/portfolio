@@ -1,0 +1,86 @@
+---
+title: "My voice agent hung up on a caller after answering their question"
+publishedAt: "2026-10-12"
+summary: "Mid-test, the free LLM hit its rate limit, a fallback model took over, answered in perfect Hindi, said 'take care' and ended the call. Nobody had said bye. What that teaches about tool descriptions, fallback models and testing the paths you hope never run."
+---
+
+The log line was calm about it:
+
+```text
+INFO livekit.agents - deleting the room because the user ended the call
+```
+
+The user had not ended the call. The user, a test bot, had just asked in Hindi how to get an internship in voice AI. The agent gave a good answer, ended it with "जल्दी बात करेंगे, ध्यान रखना!" ("talk soon, take care!"), and hung up.
+
+It's a funny bug. It's also a very good lesson about how tool-using agents fail, because nothing in it was "broken".
+
+## What happened, in order
+
+1. The test ran several calls back to back, so the free-tier primary LLM (gpt-oss-120b on Groq) hit its tokens-per-minute limit.
+2. The fallback adapter moved to gpt-oss-20b. Also rate limited.
+3. It moved to the third model in the chain, a different model family entirely.
+4. That model answered the Hindi question well, then decided the conversation felt finished, said a warm goodbye, and called the **end-call tool**.
+
+Every component did what it was built to do. The fallback chain kept the call alive through two rate limits. The tool worked. The model was being polite. The result was a caller who got hung up on.
+
+## Bug 1: a tool description is a prompt
+
+The agent has exactly one tool: end the call. Its original setup said, in effect, "use this to end the call, and say a warm goodbye first". The system prompt said "if the caller says bye or wants to end, say goodbye and end the call".
+
+To the primary model, that was clear. To the fallback model, "wants to end" was a judgement call, and a nicely wrapped-up answer looked like an ending.
+
+The fix is to make the trigger explicit in **both** places the model reads, the system prompt and the tool description ([code](https://github.com/ANDROIDHASSAN/portfolio/blob/main/voice-agent/agent.py)):
+
+```python
+EndCallTool(
+    extra_description="Only when the caller explicitly says bye or asks to hang up. "
+                      "Never after answering a question.",
+    end_instructions="say a short, warm goodbye in the caller's language",
+)
+```
+
+```text
+End the call only when the caller clearly says bye or asks to hang up. Never end it
+yourself, never sign off ("take care", "ध्यान रखना") after answering: finish every
+answer by inviting the next question.
+```
+
+Notice the second rule doesn't just ban the action, it bans the *lead-up*. A model that has already said "take care" has talked itself into the goodbye. Stopping the sign-off stops the hang-up.
+
+<Callout>
+Write tool descriptions as if a different, less careful model will read them. Eventually one will: your fallback.
+</Callout>
+
+## Bug 2: your fallback model is a different employee
+
+Fallback chains are usually designed for availability: if model A fails, model B answers. Teams test that B *answers*. They rarely test that B *behaves* the same way.
+
+But models from different families read the same prompt differently. Things that drift between them:
+
+- **Tool-calling eagerness.** Some models call tools at the first plausible moment. Some barely call them at all.
+- **Length.** One model respects a 35-word limit, another treats it as a suggestion ([why that limit exists](/blog/voice-llm-prompting-35-word-rule)).
+- **Language discipline.** One answers Marathi in Marathi; another drifts into Hindi.
+- **Persona.** One stays in character; another starts saying "As an AI language model".
+
+If a model is in your chain, it's in your product. It will serve real callers on your worst day, the day the primary is down, which is exactly when you have the least attention to spare.
+
+## How to test the paths you hope never run
+
+- **Force each fallback on purpose.** Run your full test conversation with only model B enabled, then only model C. If you only ever test the happy path, the first time model C talks to a caller is in production.
+- **Watch actions, not just words.** Transcript reviews catch bad answers. They don't catch a tool call that ended a call or sent a message. Log every tool call with the model that made it.
+- **Rate-limit yourself in tests.** Free tiers made this bug easy to find: a burst of test calls hits the limit and exercises the chain. On paid tiers, simulate it.
+
+## Agent-initiated hang-ups should be rare and boring
+
+There are good reasons for an agent to end a call by itself, and this agent has two, both handled in code rather than left to the model:
+
+- **Time limit**: after 5 minutes it says a fixed goodbye and closes the room.
+- **Silence**: if neither side has spoken for 45 seconds, it says "I can't hear anyone, so I'll hang up now" and closes the room. That frees the slot for a real caller instead of letting a silent tab, or a bot, hold it.
+
+Both are deterministic: fixed text, fixed conditions, no model judgement. The model's own end-call tool is reserved for one thing only: the caller said bye.
+
+## The general lesson
+
+Agent bugs often aren't failures. They're a reasonable component making a reasonable decision with the wrong context. The fix is rarely more code. It's being explicit about intent everywhere the model reads, and testing with every model that might read it.
+
+The agent with all of this in it is live on [the home page](/#talk). Say bye to it and it'll hang up. Say "thanks, that helps" and it should keep listening; if it doesn't, [tell me](mailto:hassankazinasik@gmail.com).

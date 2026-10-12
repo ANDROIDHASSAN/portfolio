@@ -1,0 +1,94 @@
+---
+title: "A cough is not an interruption: barge-in for voice agents, done properly"
+publishedAt: "2026-10-12"
+summary: "Callers must be able to cut a voice agent off. But if every cough, 'hmm' and 'haan haan' stops it mid-sentence, the agent sounds broken. How barge-in, false-interruption recovery, backchannels and noise cancellation fit together."
+---
+
+There are two ways to build an annoying voice agent.
+
+The first one never lets you interrupt. You realise in the first five words that it misunderstood you, and you have to sit through the remaining thirty like a hostage.
+
+The second one stops talking every time you breathe. You cough, it stops. You say "hmm" to show you're listening, it stops and asks what you said. You never hear a full sentence.
+
+Good barge-in lives between the two, and getting there takes more than one setting.
+
+## What barge-in actually is
+
+When the caller starts speaking while the agent is talking, the agent should stop, quickly, and listen. That's barge-in. The basic version is simple: a voice activity detector (VAD) watches the caller's audio, and when it detects speech during agent playback, playback stops.
+
+The problem is that a VAD detects **sound that looks like speech**, not **intent to take the turn**. And plenty of sounds look like speech:
+
+- coughs, laughs, a sharp breath
+- a TV, a colleague, traffic
+- the agent's *own voice* leaking back through the caller's speaker
+- **backchannels**: "hmm", "okay", "right", "haan", "achha"
+
+That last group is the interesting one.
+
+## Backchannels are not interruptions
+
+In conversation, listeners constantly make small noises that mean "go on, I'm with you". Linguists call them backchannels. They are the opposite of an interruption: they're the listener *declining* the turn.
+
+Indian callers backchannel a lot, and in two or three languages. "Haan haan", "achha", "ji", "okay okay". An agent that treats each of those as barge-in will stop mid-sentence over and over, and the caller will hear an agent that can't finish a thought.
+
+## Fix 1: recover from false interruptions
+
+The most useful idea here is to not treat an interruption as final until it proves itself. If the caller makes a sound, pause. If that sound turns into real words, the caller has the turn. If it doesn't, **resume the sentence** where it stopped.
+
+In LiveKit Agents that's a couple of options on the session ([this site's agent](https://github.com/ANDROIDHASSAN/portfolio/blob/main/voice-agent/agent.py)):
+
+```python
+turn_handling=TurnHandlingOptions(
+    interruption={"resume_false_interruption": True, "false_interruption_timeout": 1.0},
+    ...
+)
+```
+
+If no transcript arrives within a second of the "interruption", the agent decides it was a cough and carries on. One second is long enough for real speech to show up in the transcript and short enough that a genuine pause doesn't feel like the agent froze.
+
+## Fix 2: require some evidence before stopping
+
+Stopping instantly on any sound feels responsive in demos and broken on real calls. Frameworks let you require a minimum duration of speech, or a minimum number of transcribed words, before an interruption counts. Tune it per audience:
+
+| Setting | Too low | Too high |
+|---|---|---|
+| Minimum speech before stopping | Coughs and "hmm" stop the agent | Callers feel ignored when they cut in |
+| False-interruption timeout | Agent resumes over a caller who was just slow to start | Long dead air after every cough |
+
+There's no universal right answer. A screening call where people answer questions needs different settings from a support line where people are angry and want to interrupt.
+
+## Fix 3: remove the noise before the VAD sees it
+
+Every false interruption you prevent upstream is one you don't have to recover from. Two layers:
+
+- **In the browser**: echo cancellation, noise suppression and auto gain on the mic. Echo cancellation matters most, because otherwise the agent hears its own voice through the caller's laptop speakers and interrupts itself.
+- **In the agent**: a dedicated noise-cancellation model on the incoming audio. This agent runs Krisp's BVC (background voice cancellation), which removes background speakers as well as noise, so a colleague talking nearby doesn't trigger barge-in.
+
+```python
+room_options=room_io.RoomOptions(
+    audio_input=room_io.AudioInputOptions(noise_cancellation=noise_cancellation.BVC())
+)
+```
+
+## Fix 4: know when the caller is *done*
+
+Interruption has a twin problem: end-of-turn detection. If the agent decides the caller has finished while they're just pausing to think, it starts talking over them, and now the *caller* is the one interrupting. Same bad experience, other direction.
+
+Silence-based detection ("they stopped for 500 ms, so they're done") fails on thoughtful speakers and on code-mixed speech, where people often pause while switching languages. Semantic turn detection, a model that looks at *what* was said ("did that sentence end?"), fails much less. It's also one of the biggest slices of a latency budget, which is why I treat it as the main target in [the sub-second Hindi agent plan](/blog/sub-second-hindi-voice-agent).
+
+<Callout>
+Test interruptions with real behaviour, not silence: cough during a reply, say "hmm" during a reply, interrupt with a real question during a reply, and pause for two seconds mid-sentence. Four cases, and each one fails differently.
+</Callout>
+
+## The combined picture
+
+A good interruption stack is layered:
+
+1. Clean the audio (echo cancellation, noise and background-voice cancellation).
+2. Require a little evidence before stopping.
+3. If it turns out to be nothing, resume the sentence.
+4. Detect the end of the caller's turn semantically, not just by silence.
+
+None of these is clever on its own. Together they're the difference between an agent that sounds like it's listening and one that sounds like it's flinching.
+
+You can try all four on [the voice clone on the home page](/#talk). Cough at it. It'll keep going.

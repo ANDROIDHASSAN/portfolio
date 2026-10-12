@@ -1,0 +1,92 @@
+---
+title: "A multilingual voice agent for ₹0: free tiers, their walls, and how not to get abused"
+publishedAt: "2026-10-12"
+summary: "The voice clone on this site runs entirely on free tiers: LiveKit Cloud, Groq, Sarvam, Deepgram, ElevenLabs and Vercel. Every free tier has a wall. Here's where each one is, the fallback chain that keeps calls alive when you hit it, and the limits that stop strangers burning your quota."
+---
+
+"Free" in AI infrastructure means "free until a specific number". The skill isn't finding free tiers. It's knowing exactly where each wall is, and designing so that hitting one is a non-event.
+
+The voice clone on [this site's home page](/#talk) costs nothing to run. It speaks English, Hindi and Marathi, has noise cancellation, and survives provider outages mid-call. Here's the stack, the walls I hit while building it, and the security that keeps a public, free agent from becoming someone else's free agent.
+
+*Free-tier limits change often. Everything below is what I saw in October 2026; check the providers' pricing pages before you rely on a number.*
+
+## The stack
+
+| Job | Primary | Free allowance (Oct 2026) | Falls back to |
+|---|---|---|---|
+| Orchestration + hosting | LiveKit Cloud (Build plan) | 1,000 agent-minutes/month, 5 concurrent calls, 1 deployed agent | — |
+| Speech-to-text | Sarvam saaras | one-time signup credits | Deepgram nova-3 → Groq Whisper |
+| LLM | gpt-oss-120b on Groq | 8,000 tokens/minute, 200,000 tokens/day | LiveKit Inference gpt-4.1-mini → gpt-oss-20b |
+| Text-to-speech | ElevenLabs (English), Sarvam (Hindi, Marathi) | 10,000 characters/month on ElevenLabs | Sarvam / ElevenLabs → Cartesia |
+| Website + token API | Vercel Hobby | free for personal projects | — |
+
+## The walls I actually hit
+
+**Groq's model list was shorter than the docs I remembered.** On the free tier only the two gpt-oss models answered; requests for other model names came back 404. Plan around what the API returns today, not a blog post from last year (including this one).
+
+**8,000 tokens per minute is small for voice.** A voice agent resends its whole prompt every turn. My prompt was about 2,600 tokens; three quick turns and one test burst later, 429. Two fixes:
+
+- Compress the prompt. Knowledge went from paragraphs to terse facts, roughly 2,600 to 2,000 tokens.
+- Cap the output: `max_completion_tokens=200`. Rate limiters count the output you *reserve*, not just what you use, and voice replies are short anyway ([why](/blog/voice-llm-prompting-35-word-rule)).
+
+**The daily wall is the one that bites.** Groq also caps the free tier at 200,000 tokens per day per model. That sounds like a lot until you do the maths: a 2,500-token prompt resent every turn means well under a hundred turns a day on the primary model. One afternoon of testing used it up. After that, every call runs on the fallbacks, which is exactly why they need to be good.
+
+**Reasoning models think on your token budget.** gpt-oss reasons before it answers, and those reasoning tokens count toward the output cap. In one raw API test at the default reasoning effort, the model spent 198 of its 200 tokens thinking and returned an empty reply. On a voice call, an empty reply is silence. Setting `reasoning_effort="low"` dropped the thinking to 14 tokens and the answer came back whole. The LiveKit Groq plugin already defaults to low for these models; I pin it anyway, because if a default ever changes, this bug comes back without a single error.
+
+**ElevenLabs' free plan only exposes premade voices over the API.** Library voices returned 402. Fine: a premade voice for English, and a native Indian voice from Sarvam for Hindi and Marathi, which sounds better for those languages anyway ([how the agent picks](/blog/hindi-marathi-voice-routing)).
+
+**One-time credits run out mid-test.** Sarvam returned 402 one afternoon. Calls didn't fail, because the next engine in the chain took over. That's the whole point of the chain.
+
+## Fallback chains turn walls into non-events
+
+Every stage is a list, best first, built only from engines whose keys exist:
+
+```python
+llm.FallbackAdapter([
+    groq.LLM(model="openai/gpt-oss-120b", temperature=0.4, max_completion_tokens=200, reasoning_effort="low"),
+    inference.LLM("openai/gpt-4.1-mini"),
+    groq.LLM(model="openai/gpt-oss-20b", temperature=0.4, max_completion_tokens=200, reasoning_effort="low"),
+])
+```
+
+When the 120b model rate-limits mid-call, the next request goes to the next model, and the call carries on.
+
+**Order the chain by behaviour, not by price or provider.** My first chain put gpt-oss-20b second because it was on the same free provider. Then I asked all three models the same questions with the same prompt. The 20b model invented tools for a project ("deployed on LiveKit Cloud", for a product that doesn't use LiveKit) and answered a romanized Hindi question in Marathi. gpt-4.1-mini got every fact right and declined what it didn't know. So 20b moved to last place: it now only speaks when both better models are out of quota.
+
+Two rules make chains safe:
+
+- **Test every link on its own.** A fallback model is a different model, with different habits. Mine once hung up on a caller ([the story](/blog/voice-agent-hung-up-end-call-tool)).
+- **Keep audio formats identical across the chain.** Every TTS here outputs 24 kHz, so switching engines mid-call doesn't glitch.
+
+## A free public agent is an open tap
+
+Put a "talk to my AI" button on the internet and you've published a way to spend your quota. 1,000 minutes is about 200 five-minute calls. A bored script could use that up in an afternoon. So the token route and the agent both enforce limits ([route code](https://github.com/ANDROIDHASSAN/portfolio/blob/main/web/src/app/api/voice-token/route.ts)):
+
+| Limit | Why |
+|---|---|
+| Token requests must come from this site's own origin | Stops other sites embedding your agent; a missing `Origin` is rejected too |
+| Tokens live for 1 minute | Long enough to join, too short to reuse after the call ends |
+| Mic only, no data publishing | A caller can talk, but can't inject text messages into the agent |
+| 5 calls per hour per IP | Casual abuse stops here |
+| 5-minute cap per call | Bounds the cost of any single call |
+| Hang up after 45 s of silence | A silent tab or bot can't hold one of the 5 concurrent slots |
+
+Honest caveat: the per-IP limit is in memory, per server instance. It stops casual abuse, not a determined attacker with many IPs. The next step would be a shared store like Redis. On a free tier the worst case is that the feature is down for the rest of the month, not a bill, and that trade-off is fine for a portfolio. It would not be fine for a business.
+
+<Callout>
+Before your first public push: scan every file you're about to commit for real key values, not just key-shaped patterns. Example files are where pasted keys like to hide. And rotate any key that has ever been printed in a terminal or a log.
+</Callout>
+
+## Privacy is a setting, so set it
+
+Agent frameworks increasingly record sessions for observability, sometimes based on a project-level setting you might not remember turning on. If your page says calls aren't recorded, make the code guarantee it instead of the dashboard:
+
+```python
+await session.start(agent=agent, room=ctx.room, record=False, ...)
+```
+
+## What ₹0 doesn't buy you
+
+Free tiers are perfect for a portfolio, a prototype or a demo. They're not a business plan: per-minute caps, daily request limits and one-time credits mean you're one popular day away from "try again later". The architecture here, chains of interchangeable providers behind small interfaces, is the same one you'd use with paid tiers. Only the numbers change.
+
+The whole thing is five Python files and one API route, [open source on GitHub](https://github.com/ANDROIDHASSAN/portfolio). Fork it, swap in your own knowledge base, and you have a voice clone for the price of a few signups.

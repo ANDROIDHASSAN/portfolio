@@ -1,0 +1,72 @@
+---
+title: "Phone calls are not WebRTC: what changes when your voice agent answers a real number"
+publishedAt: "2026-10-12"
+summary: "A voice agent that sounds great in the browser can sound like a different product on a phone line. 8 kHz audio, no browser echo cancellation, voicemail, keypad tones and webhooks: what telephony (Twilio, Exotel, Vapi) changes, from building AI phone screening from scratch."
+---
+
+Browser demos lie to you, a little.
+
+In a browser your agent gets a clean, wideband microphone with echo cancellation built in, over a low-latency WebRTC connection. Then you put the same agent on a phone number, and it starts mishearing names, talking over people and getting voicemail greetings as answers.
+
+I built IncScreen, an AI phone-screening product, from scratch on Twilio and Exotel telephony with Vapi orchestrating the speech pipeline. This is the list I wish I'd had on day one.
+
+## 1. The audio is a different medium
+
+| | Browser (WebRTC) | Phone line (PSTN) |
+|---|---|---|
+| Codec | Opus | G.711 (μ-law or A-law) |
+| Sample rate | up to 48 kHz | 8 kHz |
+| Frequencies carried | full voice range | roughly 300–3,400 Hz |
+| Echo cancellation | built into the browser | whatever the handset and carrier do |
+
+That 8 kHz limit throws away the high frequencies where a lot of consonants live: the difference between "s" and "f", or between similar-sounding names. Phone media streams from providers like Twilio arrive as 8 kHz μ-law audio, and that's all the information there is.
+
+What that means in practice:
+
+- **Use STT that's good on telephony audio.** Upsampling 8 kHz to 16 kHz doesn't recover what the line removed. Pick models and settings meant for phone calls, and test with real phone recordings, not your laptop mic.
+- **Keyterm prompting matters more.** With less acoustic detail, the model leans harder on its vocabulary guesses. Tell it the names it's about to hear ([how](/blog/keyterm-prompting-voice-agents)).
+- **Your expensive TTS voice gets squeezed.** That wideband, expressive voice is downsampled to 8 kHz on the way out. Listen to every candidate voice *through a phone* before you pick one. Some survive narrowband much better than others.
+
+## 2. Nobody is cancelling the echo for you
+
+In a browser, `echoCancellation: true` handles the agent hearing itself. On a phone call, the caller might be on speakerphone in a noisy room, and the agent's own voice comes back down the line. Without care, the agent interrupts *itself*.
+
+So everything in [the barge-in post](/blog/false-interruptions-barge-in) gets more important on phones: noise and background-voice cancellation on the incoming audio, a little evidence before treating sound as an interruption, and recovery when it was a false alarm. IncScreen's Hindi calls had exactly this class of problem: cut-off speech and interruptions.
+
+## 3. Latency has more hops
+
+A browser call goes caller → WebRTC server → your agent. A phone call goes caller → carrier → telephony provider → your agent, and back. Each leg adds delay and jitter buffering you don't control.
+
+You can't remove those hops, so you budget for them. If the network eats more of the budget, the pipeline has to give some back: stream everything, start TTS on the first sentence, generate the reply before the turn is fully final. On IncScreen, Hindi replies took about 5 seconds against about 2 in English, and on a phone call 5 seconds of silence feels like the line dropped. That's why every stage gets a number in [the latency budget](/blog/sub-second-hindi-voice-agent).
+
+## 4. The phone network has its own vocabulary
+
+Things a browser agent never deals with:
+
+- **Voicemail and answering machines.** On outbound calls, plenty of "answers" are a recorded greeting. Without detection, your agent politely interviews a voicemail box. IncScreen has voicemail detection for exactly this reason.
+- **Call states.** Ringing, answered, busy, no answer, failed, completed. Providers report them through webhooks, and your system has to handle every one, including the boring ones, because "no answer" is a business event (retry? notify someone?).
+- **Keypad tones (DTMF).** The universal fallback input. When speech recognition struggles, "press 1 for yes" still works on every phone ever made.
+- **Transfers.** Sometimes the right move is to hand the caller to a human. That's a telephony action, not an LLM response.
+
+## 5. Picking a provider and a level of control
+
+**Twilio** is the global default: mature APIs, media streams over WebSockets, numbers in many countries. **Exotel** is built around Indian telephony: Indian numbers and the way business calling works in India, which has its own telecom regulations. For an India-first product it's worth having both in the toolbox.
+
+Then there's how much of the pipeline you own:
+
+| Approach | You get | You give up |
+|---|---|---|
+| Orchestration platform (e.g. Vapi) | STT, LLM, TTS and telephony wired together; fast to ship | Fine control over turn-taking, routing and failure handling |
+| Your own agent on raw telephony (e.g. LiveKit SIP, media streams) | Every knob: per-language routing, custom fallbacks, your own guards | You build and run all of it |
+
+Neither is "the senior choice". Shipping a working phone product fast on a platform, then pulling pieces in-house where the platform can't do what you need, is a perfectly good path. The senior part is knowing which pieces those are.
+
+<Callout>
+Before you launch a phone agent, call it from a cheap phone, on speakerphone, in a noisy room, on a weak signal. Then let it call a number that goes to voicemail. Most of the bugs in this post show up in those two calls.
+</Callout>
+
+## The short version
+
+Treat the phone line as a separate platform, not a deployment target. Different audio, different echo, different latency, different events. An agent that's great in the browser is a strong starting point, not a finished phone product.
+
+The browser version of my agent is on [the home page](/#talk) if you want to compare. It gets the luxury audio.

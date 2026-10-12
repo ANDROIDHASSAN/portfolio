@@ -24,9 +24,9 @@ const md = (text: string) => (
   </Markdown>
 );
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className="mt-5 break-inside-avoid-page print:mt-2.5">
+    <section className={`mt-5 break-inside-avoid-page print:mt-2.5 ${className}`}>
       <h2 className="mb-2 border-b border-neutral-200 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-neutral-500">{title}</h2>
       <div className="space-y-2.5 print:space-y-1">{children}</div>
     </section>
@@ -83,8 +83,9 @@ export default async function Resume() {
           </p>
         </header>
 
-        {/* The short description, not DATA.summary: the summary repeats the InCruiter bullet below. */}
-        <Section title="Summary">{md(DATA.description)}</Section>
+        {/* The short description, not DATA.summary: the summary repeats the InCruiter bullet below. Left out of the
+            PDF, where the title line under the name already says it, to keep it to one page. */}
+        <Section title="Summary" className="print:hidden">{md(DATA.description)}</Section>
 
         <Section title="Experience">
           {DATA.work.map((w) => (
@@ -112,7 +113,8 @@ export default async function Resume() {
           {prs.map((pr) => (
             <div key={pr.pr}>
               <Row left={`#${pr.pr} ${pr.title}`} right={pr.live.label.replace(/^[●✓]\s*/, "")} />
-              <p className="mt-0.5">{pr.description}</p>
+              {/* Hidden in the PDF to keep it to one page; the PR titles already say what each fix does. */}
+              <p className="mt-0.5 print:hidden">{pr.description}</p>
             </div>
           ))}
         </Section>

@@ -1,0 +1,90 @@
+---
+title: "Hindi and Marathi share an alphabet. Your text-to-speech doesn't know that."
+publishedAt: "2026-10-12"
+summary: "A multilingual voice agent has to pick a voice for every reply. Picking it from the caller's language breaks the moment someone asks to switch. Picking it from the reply's script breaks on Hindi vs Marathi. Here's the approach that survived real calls."
+---
+
+Here is a bug that only exists in India.
+
+A caller speaks Marathi. The agent replies in perfect Marathi. And then the text-to-speech reads it out with a Hindi voice, in a Hindi accent, stressing the wrong syllables. To a Marathi speaker it sounds like a Hindi speaker doing an impression. Technically correct, emotionally wrong.
+
+Both languages are written in Devanagari. To a computer looking at characters, आहे and है are the same kind of thing. To a human, they're different languages.
+
+This post is how this site's voice agent decides which voice speaks each reply, and the three wrong answers I went through first.
+
+## Wrong answer 1: use the caller's language
+
+The obvious design: the STT tells you what language the caller spoke, so speak back in that language.
+
+This breaks on the most common multilingual request there is:
+
+> "Can you answer in Hindi?"
+
+That sentence is English. The STT says "English". The LLM, correctly, replies in Hindi. The TTS, following the STT, reads the Hindi with an English voice. Congratulations, you've built a very expensive accent generator.
+
+**Lesson:** the caller's language tells you what they *said*. It doesn't tell you what the agent is *about to say*.
+
+## Wrong answer 2: use the reply's script
+
+Better idea: look at the reply text itself. Latin letters, use the English voice. Devanagari, use the Hindi voice.
+
+This fixes "answer in Hindi" and breaks Marathi completely, because Marathi is Devanagari too. Every Marathi reply gets the Hindi voice.
+
+## Wrong answer 3: one magic multilingual voice
+
+Some TTS models accept mixed-language input and handle it themselves. They're great for English sentences with Hindi words sprinkled in. In practice, they don't reliably pronounce full Marathi sentences well enough to sound native, and the support tables of most real-time models simply don't list Marathi.
+
+## What actually works: read the reply's words
+
+Hindi and Marathi share a script but not a vocabulary. The words that glue sentences together are different, and they show up in almost every sentence:
+
+| Meaning | Hindi | Marathi |
+|---|---|---|
+| is | है | आहे |
+| and | और | आणि |
+| in | में | मध्ये |
+| I / me | मैं / मुझे | मी / मला |
+| no / not | नहीं | नाही |
+
+So the agent waits for the first sentence of the LLM's reply (about 80 characters), counts Hindi marker words against Marathi marker words, and routes the reply to that language's voice chain. Simplified from [the real code](https://github.com/ANDROIDHASSAN/portfolio/blob/main/voice-agent/agent.py):
+
+```python
+words = set(re.findall(r"[ऀ-ॿ]+", head))  # Devanagari words in the first sentence
+mr, hi = len(words & MARATHI_WORDS), len(words & HINDI_WORDS)
+lang = "en" if not words else "mr" if mr > hi else "hi" if hi > mr else self.indic
+self._tts = self.voices[lang]  # the next frames come from that language's TTS chain
+```
+
+Three details make this survive real traffic:
+
+1. **Ties go to the caller.** A short reply like "ठीक" has no markers. Then the agent falls back to the last Indic language the STT heard from the caller.
+2. **Only the first sentence is buffered.** Waiting for the whole reply would add seconds of silence. One sentence is enough to decide, and the rest streams straight through.
+3. **No Devanagari means English.** Romanized Hinglish ("bhai kaise ho") reads fine in an Indian English voice.
+
+## The bug the fix introduced
+
+The first version of the marker list included **मी** (Marathi for "I"), plus a romanized-Marathi rule that treated "mi" as a Marathi signal.
+
+Then a test call said, in romanized Hindi, "internship kaise **mili**?". The LLM saw "mi" inside "mili", decided the caller was speaking Marathi, and answered in Marathi. Correct Marathi, wrong person.
+
+The fix was two-sided: drop the ambiguous token from the romanized rules, and tell the LLM explicitly that words like *bhai, tumhe, kaise, mili, batao* mean Hindi. Marker lists need the same care as keyterm lists ([more on those](/blog/keyterm-prompting-voice-agents)): every entry has to be unambiguous, or it will eventually match the wrong thing.
+
+## Give each language its own voice chain
+
+Routing is half the job. The other half is having a good voice to route *to*, with a fallback when it fails:
+
+```python
+order = {
+    "en": [eleven, sarvam, cartesia],   # ElevenLabs for English
+    "hi": [sarvam, eleven, cartesia],   # a native Indian voice first for Hindi
+    "mr": [sarvam, cartesia],           # fewer engines support Marathi at all
+}
+```
+
+Every chain outputs the same 24 kHz audio. That sounds like a detail until you switch languages mid-call and the audio pipeline has to reconfigure, which comes out as a click right when the caller is paying the most attention.
+
+<Callout>
+If you support more than one Indian language, test the language *switch*, not just each language on its own. "Start in English, ask for Hindi, reply in Marathi, go back to English" in one call catches every bug in this post.
+</Callout>
+
+That four-turn test, spoken by a bot caller, is how this agent was tested while I built it. You can run it yourself on [the home page](/#talk): start in English, then switch to Hindi or Marathi halfway through.

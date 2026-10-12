@@ -20,6 +20,9 @@ export const STATUS_LABEL: Record<Status, string> = {
 };
 
 const arxiv = (id: string) => ({ title: `arXiv ${id}`, href: `https://arxiv.org/abs/${id}` });
+const REPO = "https://github.com/ANDROIDHASSAN/portfolio";
+const code = (file: string) => ({ label: `code: ${file}`, href: `${REPO}/blob/main/${file}` });
+const prod = (where: string) => ({ label: `production: ${where}`, href: "" });
 
 export const DATA = {
   name: "Hassan Kazi",
@@ -39,10 +42,20 @@ export const DATA = {
     { name: "LiveKit Agents" },
     { name: "WebRTC" },
     { name: "Vapi" },
+    { name: "Twilio" },
+    { name: "Exotel" },
+    { name: "Telephony (PSTN)" },
     { name: "STT / TTS" },
+    { name: "Deepgram" },
+    { name: "ElevenLabs" },
     { name: "Silero VAD" },
     { name: "Sarvam AI" },
     { name: "Azure OpenAI" },
+    { name: "Groq · gpt-oss" },
+    { name: "LLM tool calling" },
+    { name: "Prompt engineering" },
+    { name: "LLM guardrails" },
+    { name: "Model fallback routing" },
     { name: "Python", icon: Python },
     { name: "TypeScript", icon: Typescript },
     { name: "Node.js", icon: Nodejs },
@@ -91,7 +104,7 @@ export const DATA = {
       start: "Jul 2026",
       end: "Present",
       description:
-        "Lead the AI & real-time stack for InCBot (AI video interviewer) and IncScreen (AI phone & WhatsApp screening); scaled to 1,000+ concurrent interviews. Root-caused why multilingual interviews broke: English-only text guards failed on Devanagari (0.39 vs 0.5 match threshold) and Marathi STT hallucinated in 10 of 15 turns; drove script-aware, feature-flagged fixes.",
+        "Lead the AI & real-time stack for InCBot (AI video interviewer) and IncScreen (AI phone & WhatsApp screening, which I built from scratch on Twilio and Exotel telephony with Vapi); scaled to 1,000+ concurrent interviews. Root-caused why multilingual interviews broke: English-only text guards failed on Devanagari (0.39 vs 0.5 match threshold) and Marathi STT hallucinated in 10 of 15 turns; drove script-aware, feature-flagged fixes.",
     },
     {
       company: "Anantkamal Software Labs",
@@ -177,13 +190,28 @@ export const DATA = {
       title: "IncScreen — AI Phone & WhatsApp Screening",
       href: "https://incruiter.com",
       status: "shipped" as Status,
-      dates: "Production @ InCruiter",
+      dates: "Production @ InCruiter · built from scratch",
       description:
-        "AI screening calls and WhatsApp interviews with multilingual question sets, 7 Hindi voices, voicemail detection and fluency scoring. Hindi call-quality work: replies took ~5 s vs ~2 s in English, plus cut-off speech and interruptions.",
-      technologies: ["Vapi", "Telephony", "Webhooks", "Python"],
+        "Built from scratch: AI screening phone calls over Twilio and Exotel telephony, orchestrated with Vapi, plus WhatsApp interviews. Multilingual question sets, 7 Hindi voices, voicemail detection and fluency scoring. Hindi call-quality work: replies took ~5 s vs ~2 s in English, plus cut-off speech and interruptions.",
+      technologies: ["Twilio", "Exotel", "Vapi", "Webhooks", "Python"],
       links: [{ type: "InCruiter", href: "https://incruiter.com", icon: <Icons.globe className="size-3" /> }],
       image: "/logos/incscreen-banner.webp",
       imageDark: "",
+    },
+    {
+      title: "This site's AI voice clone",
+      href: `${REPO}/tree/main/voice-agent`,
+      status: "shipped" as Status,
+      dates: "Live on this page · open source",
+      description:
+        "Talks in English, Hindi or Marathi and switches when you do. Three-deep fallback chains for STT, LLM and TTS; keyterm-prompted STT; per-reply voice routing (Hindi and Marathi share a script, so it reads the reply's words); false-interruption recovery; Krisp noise cancellation; hangs up on silent callers. Five Python files, deployed to LiveKit Cloud by GitHub Actions.",
+      technologies: ["LiveKit Agents", "Sarvam", "Deepgram", "ElevenLabs", "Groq gpt-oss"],
+      links: [
+        { type: "Talk to it", href: "/#talk", icon: <Icons.globe className="size-3" /> },
+        { type: "Source", href: `${REPO}/tree/main/voice-agent`, icon: <Icons.github className="size-3" /> },
+      ],
+      image: "/diagrams/architecture-light.svg",
+      imageDark: "/diagrams/architecture-dark.svg",
     },
     {
       title: "IndicVoiceBench",
@@ -249,6 +277,59 @@ export const DATA = {
       visual: "injection",
       image: "",
       imageDark: "",
+    },
+  ],
+  // What breaks real voice agents and what I do about it. Every line points at production work or at code you can read.
+  playbook: [
+    {
+      problem: "Phone calls, not just browsers",
+      fix: "PSTN calls over Twilio and Exotel with Vapi orchestrating STT → LLM → TTS, call events over webhooks, voicemail detection so the agent never interviews an answering machine.",
+      proof: [prod("IncScreen, built from scratch")],
+    },
+    {
+      problem: "Interruptions and barge-in",
+      fix: "Callers can cut in, but a cough or an “hmm” doesn't kill the sentence: a false interruption resumes the reply after 1 s. Fixed cut-off speech on Hindi calls.",
+      proof: [code("voice-agent/agent.py"), prod("IncScreen")],
+    },
+    {
+      problem: "STT mishears names and jargon",
+      fix: "Keyterm prompting: product names, people and tech words are pushed into Deepgram nova-3 keyterms and Sarvam's prompt, so “InCruiter” stops coming back as something else.",
+      proof: [code("voice-agent/stt.py")],
+    },
+    {
+      problem: "Hindi, Marathi and Hinglish in one call",
+      fix: "STT auto-detects the language; the voice is picked from the reply itself (Hindi and Marathi share Devanagari, so marker words decide), and each language has its own TTS chain.",
+      proof: [code("voice-agent/agent.py"), code("voice-agent/tts.py")],
+    },
+    {
+      problem: "Guards that only read English",
+      fix: "Script-aware, feature-flagged matching after an English-only guard scored a correct Devanagari answer 0.39 against a 0.5 threshold. Diagnosed Marathi STT hallucinating in 10 of 15 turns.",
+      proof: [prod("InCBot"), { label: "write-up", href: "/blog/why-voice-agents-break-on-hindi" }],
+    },
+    {
+      problem: "Providers fail mid-call",
+      fix: "Every stage has a fallback chain: three STT engines, three LLMs, a TTS chain per language. A rate limit mid-call moves to the next model and the call carries on.",
+      proof: [code("voice-agent/llm.py"), code("voice-agent/tts.py")],
+    },
+    {
+      problem: "Latency that compounds",
+      fix: "Per-stage latency budgets, streaming everywhere, preemptive generation that starts the reply before the turn is final, one 24 kHz format across voices.",
+      proof: [code("voice-agent/agent.py"), { label: "write-up", href: "/blog/sub-second-hindi-voice-agent" }],
+    },
+    {
+      problem: "LLMs that ramble or make things up",
+      fix: "Voice-specific prompting: hard word cap with a server-side trim, markdown and emoji stripped before TTS, scope lock, prompt-injection resistance, no invented facts, AI disclosure.",
+      proof: [code("voice-agent/brain.py")],
+    },
+    {
+      problem: "Noisy rooms and echo",
+      fix: "Krisp noise cancellation on the caller's audio in the agent, echo cancellation and auto gain in the browser.",
+      proof: [code("voice-agent/agent.py"), code("web/src/components/voice-agent.tsx")],
+    },
+    {
+      problem: "Cost and abuse on a public agent",
+      fix: "One-minute mic-only tokens bound to this site's origin, per-IP rate limit, 5-minute cap, hang-up after 45 s of silence, no call recording.",
+      proof: [code("web/src/app/api/voice-token/route.ts"), code("voice-agent/agent.py")],
     },
   ],
   // Status and diff size are fetched live from GitHub (src/lib/github.ts); test counts are from each PR's description.

@@ -1,0 +1,101 @@
+---
+title: "The 35-word rule: prompting an LLM whose output will be spoken aloud"
+publishedAt: "2026-10-12"
+summary: "Chat prompts produce paragraphs, bullet lists and confident little stories. Spoken aloud, that's a 40-second monologue with asterisks in it. The prompt rules, server-side guards and one embarrassing hallucination behind a voice agent that talks like a person."
+---
+
+The first version of this site's voice clone was a great writer and a terrible conversationalist.
+
+Asked "what did you build at InCruiter?", it produced a lovely, accurate, well-structured answer of **69 to 88 words**. On a screen that's a short paragraph. Spoken by a TTS, it's about 38 seconds of uninterrupted talking. Nobody on a call waits 38 seconds. They interrupt, or they leave.
+
+Text LLMs are trained to be thorough. Voice needs the opposite. Here is what changed.
+
+## Rule 1: a hard word limit, stated as a hard limit
+
+"Be concise" does nothing. Every model believes it is already concise. What works is a number:
+
+```text
+HARD LIMIT: one or two short sentences, max 35 words, one paragraph.
+Give the single best point, then offer more.
+```
+
+The second line matters as much as the first. A voice answer isn't a shorter essay, it's the *first move* in a conversation. Give the best point, then ask "want me to go deeper?" The caller steers. That's what a person would do.
+
+## Rule 2: don't trust the prompt alone
+
+Models follow a word limit most of the time. "Most of the time" is not a product. So the agent also enforces it server-side, inside the text-to-speech step ([code](https://github.com/ANDROIDHASSAN/portfolio/blob/main/voice-agent/agent.py)):
+
+```python
+async def replay():
+    spoken = head
+    yield head
+    async for chunk in chunks:
+        yield chunk
+        spoken += chunk
+        if len(spoken.split()) > MAX_SPOKEN_WORDS and spoken.rstrip()[-1:] in ".?!।;":
+            return  # past 45 words: stop at the next sentence end
+```
+
+Two details:
+
+- It cuts at a **sentence boundary**, never mid-word. A clipped sentence sounds like a dropped call.
+- The cap (45) sits above the prompt's limit (35). The guard is a backstop for when the model rambles, not the main control.
+
+Note the `।`: that's the Devanagari full stop. A sentence splitter that only knows `.?!` will happily run on through an entire Hindi paragraph.
+
+## Rule 3: strip everything that isn't speech
+
+LLMs love markdown. TTS engines read it literally. Without a filter, "**important**" can come out as "asterisk asterisk important asterisk asterisk".
+
+The prompt says no markdown, lists, emojis, URLs or code, and the session strips them anyway before the text reaches the voice:
+
+```python
+tts_text_transforms=["filter_emoji", "filter_markdown"]
+```
+
+Belt and braces. You will not catch every way a model can format text, so remove formatting at the last step too.
+
+## Rule 4: numbers the way people say them, but exact
+
+The model once turned "**1,000+** concurrent interviews" into "**thousands** of interviews". Sounds more natural. Also no longer true. On a portfolio, that's the difference between a fact and an exaggeration.
+
+The rule now: say numbers the way people say them, but quote them exactly. Natural delivery is the TTS's job. Accuracy is the prompt's.
+
+## Rule 5: the model will invent your life story
+
+This one was embarrassing. A test caller asked how I got my job. The model, trying to be helpful and personal, replied that I got an internship through my open-source pull requests.
+
+Lovely story. Never happened.
+
+Voice makes this worse than text. A spoken sentence in a confident first-person voice *sounds* like testimony. Listeners don't scroll back and fact-check. So the prompt now has an explicit rule plus examples:
+
+```text
+Make up personal stories or outcomes. Don't say how you got a job or
+internship, what PRs led to, or anything you "did" unless KNOWLEDGE says it.
+Give advice as advice ("what works is..."), not as invented history.
+```
+
+The examples teach the difference between "how did *you* do X?" (answer: that's not on my portfolio, here's a tip) and "how do *I* do X?" (answer: advice). Temperature went down to 0.4 too: lively enough to sound human, low enough to stop embellishing.
+
+<Callout>
+The fastest way to find hallucinations in a persona agent: ask it personal-history questions it has no data for. "How did you get your first job?" "What was your hardest bug?" If it answers instead of declining, your prompt is leaking.
+</Callout>
+
+## Rule 6: examples beat instructions, but examples are contagious
+
+Examples fixed the invented stories and then caused a new bug: an English question got a Hindi answer, because the examples were mostly Hindi and the model copied the language along with the behaviour.
+
+The fix was to make the examples cover each language *and* each behaviour, so the model learns the rule rather than the surface. Examples are the strongest signal in a prompt. They teach everything that's in them, including what you didn't mean to teach.
+
+## The checklist
+
+| Text prompt habit | Voice prompt rule |
+|---|---|
+| Be thorough | One best point, then offer more |
+| "Be concise" | A number: max 35 words |
+| Trust the model | Server-side trim at a sentence end |
+| Markdown for structure | No formatting; strip it again before TTS |
+| Round numbers sound friendly | Exact numbers, said naturally |
+| Personality = anecdotes | Personality = tone; facts only from the knowledge base |
+
+The whole prompt is [on GitHub](https://github.com/ANDROIDHASSAN/portfolio/blob/main/voice-agent/brain.py), and the agent it drives is on [the home page](/#talk). Try asking it something it shouldn't know.

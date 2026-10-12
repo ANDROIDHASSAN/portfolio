@@ -1,0 +1,92 @@
+---
+title: "Keyterm prompting: how to stop your speech-to-text from renaming your company"
+publishedAt: "2026-10-12"
+summary: "Your STT has never heard of your product, your founder or half your tech stack, so it guesses. Keyterm prompting fixes that in one line. How it works in Deepgram nova-3 and Sarvam, what to put in the list, and what never to put in it."
+---
+
+Every voice agent has a moment where it confidently tells a caller about a company that does not exist.
+
+Not because the LLM hallucinated. Because the speech-to-text model heard "InCruiter", had never seen that word in its life, and wrote down the closest thing it *had* seen. The LLM then did its job perfectly, on the wrong input.
+
+This is the cheapest accuracy fix in voice AI and most agents ship without it. It's called **keyterm prompting**.
+
+## Why STT renames things
+
+A speech recognizer is, roughly, a very good guesser of likely word sequences. "In cruiser" is a likely sequence. "InCruiter" is a word that exists in about one company's marketing site. Given ambiguous audio, the model picks the likely one.
+
+The words it gets wrong are the words you care about most:
+
+- **Your product and company names** (InCBot, IncScreen)
+- **People's names**, especially Indian names in an English model
+- **Tech jargon** callers say out loud: LiveKit, WebRTC, Groq
+- **Code-mixed words**: "Hinglish" is not in many vocabularies
+
+General accuracy benchmarks don't measure any of this, because benchmark audio doesn't mention your company. Your word error rate can look great while every third call mangles the one noun that matters.
+
+## The fix: tell the model what it's about to hear
+
+Modern streaming STT engines let you pass a short list of terms to bias recognition toward. In this site's own voice agent it's one list, shared by every engine ([source](https://github.com/ANDROIDHASSAN/portfolio/blob/main/voice-agent/stt.py)):
+
+```python
+KEYTERMS = ["Hassan Kazi", "InCruiter", "InCBot", "IncScreen", "LiveKit",
+            "Sarvam", "WebRTC", "Groq", "Anantkamal", "Hinglish"]
+
+sarvam.STT(model="saaras:v4", language="unknown", prompt=", ".join(KEYTERMS))
+deepgram.STT(model="nova-3", language="multi", keyterm=KEYTERMS, smart_format=True)
+groq.STT(model="whisper-large-v3", detect_language=True, prompt=", ".join(KEYTERMS))
+```
+
+Three engines, three different knobs, one idea:
+
+| Engine | Knob | What it does |
+|---|---|---|
+| Deepgram nova-3 | `keyterm` | A list of terms the model is nudged toward; works in multilingual mode too |
+| Sarvam saaras | `prompt` | Free-text context; a comma-separated list works well |
+| Whisper | `prompt` | Text the decoder treats as "previous context", so spellings carry over |
+
+Note the trick with Whisper: it doesn't have a keyterm feature at all. Its `prompt` is meant to be the transcript of the previous audio. Feeding it your keyterms makes it think it has *already* heard those words, so it spells them the same way. Hacky, effective.
+
+## What goes in the list
+
+Keep it short and specific. Ten to a few dozen terms, chosen by one question: **"If the STT gets this word wrong, does the conversation go wrong?"**
+
+Good entries:
+
+- Proper nouns the caller will actually say
+- Words with a unique spelling you need preserved ("InCBot", not "Inc bot")
+- Domain terms that sound like common words
+
+Bad entries:
+
+- **Common words.** "Interview" doesn't need help. Adding it just dilutes the list.
+- **Hundreds of terms.** Biasing toward everything is biasing toward nothing, and long lists can make the model start "hearing" your terms in unrelated audio. A caller says "in cruise" about their holiday and gets corrected to your company name.
+- **Things the caller won't say.** Your internal service names are not keyterms.
+
+<Callout>
+Rule of thumb: the keyterm list is not a dictionary of your company. It's the list of words a stranger will say on a call about you.
+</Callout>
+
+## Per-call keyterms are where it gets senior
+
+A static list is the start. The real wins come from building the list per call:
+
+- **The caller's own name**, if you know it before the call starts. Getting someone's name wrong in the first ten seconds is the fastest way to make a voice agent feel cheap.
+- **The topic of the call.** An interview for a React role and an interview for a nursing role need very different jargon.
+- **Answers you're expecting.** If the agent just asked "Which city are you in?", the next turn will probably contain a city.
+
+The pattern is the same everywhere: you know more about what the caller is about to say than the STT does. Tell it.
+
+## How to know it's working
+
+Don't trust vibes. Pull twenty real calls, grep the transcripts for each keyterm, and count how often each one appears spelled correctly versus as a near-miss. Then turn the list off and compare. If a term never shows up mangled, it doesn't need to be on the list. If a term is still mangled *with* the list, the audio is the problem (noise, accent, phone-line compression), not the vocabulary.
+
+## Where keyterms don't help
+
+Keyterms bias the vocabulary. They can't fix:
+
+- **The wrong language model.** In testing, Deepgram's multilingual mode turned a Marathi sentence into romanized half-English. No keyterm fixes that. Picking an engine that actually supports Marathi did: Sarvam returned clean Devanagari for the same clip. (More on that in [why voice agents break on Hindi](/blog/why-voice-agents-break-on-hindi).)
+- **Bad audio.** Narrowband phone audio loses the consonants that tell similar words apart. See [phone calls are not WebRTC](/blog/telephony-vs-webrtc-voice-agents).
+
+Keyterm prompting is a one-line change with a measurable payoff, and it's the first thing I check when an agent "misunderstands" callers. Nine times out of ten, the agent understood perfectly. It was the ears.
+
+Want to hear it in action? The voice clone on [the home page](/#talk) uses exactly this list. Say "InCruiter" to it.

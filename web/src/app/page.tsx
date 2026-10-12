@@ -19,14 +19,27 @@ import { Download, GitPullRequest, Mic, Star, Trophy, Users } from "lucide-react
 const BLUR_FADE_DELAY = 0.04;
 const ACHIEVEMENT_ICONS = [Trophy, Star, GitPullRequest, Users];
 
-// Fixed reading order: the production story first, then the upstream fixes, then the plan.
-const POST_ORDER = ["why-voice-agents-break-on-hindi", "three-fixes-for-livekit-agents", "sub-second-hindi-voice-agent"];
+// Home shows the first HOME_POSTS in this order (production stories first); /blog lists everything by date.
+const POST_ORDER = [
+  "why-voice-agents-break-on-hindi",
+  "telephony-vs-webrtc-voice-agents",
+  "false-interruptions-barge-in",
+  "voice-agent-hung-up-end-call-tool",
+  "keyterm-prompting-voice-agents",
+  "hindi-marathi-voice-routing",
+  "voice-llm-prompting-35-word-rule",
+  "free-multilingual-voice-agent",
+  "three-fixes-for-livekit-agents",
+  "sub-second-hindi-voice-agent",
+];
+const HOME_POSTS = 5;
 
 export default async function Page() {
   const voiceEnabled = Boolean(process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET);
   const posts = allPosts
     .map((p) => ({ ...p, slug: p._meta.path.replace(/\.mdx$/, "") }))
-    .sort((a, b) => POST_ORDER.indexOf(a.slug) - POST_ORDER.indexOf(b.slug));
+    .sort((a, b) => POST_ORDER.indexOf(a.slug) - POST_ORDER.indexOf(b.slug))
+    .slice(0, HOME_POSTS);
   const openSource = await Promise.all(
     DATA.openSource.map(async (pr) => {
       const live = await getPrStatus(pr.repo, pr.pr);
@@ -224,6 +237,49 @@ export default async function Page() {
                 <div className="lift border bg-background border-border ring-2 ring-border/20 rounded-xl h-8 w-fit px-4 flex items-center gap-2">
                   {"icon" in skill && skill.icon && <skill.icon className="size-4 rounded overflow-hidden object-contain" />}
                   <span className="text-foreground text-sm font-medium">{skill.name}</span>
+                </div>
+              </BlurFade>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="playbook">
+        <div className="flex min-h-0 flex-col gap-y-4">
+          <BlurFade delay={BLUR_FADE_DELAY * 10.5}>
+            <h2 className="text-xl font-bold">Voice AI playbook</h2>
+            <p className="mt-1 text-sm text-muted-foreground text-pretty">
+              What breaks real voice agents, and what I do about each. Every card points at production work or at code you
+              can read.
+            </p>
+          </BlurFade>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {DATA.playbook.map((p, i) => (
+              <BlurFade key={p.problem} delay={BLUR_FADE_DELAY * 11 + i * 0.03}>
+                <div className="lift flex h-full flex-col gap-2 rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[11px] text-(--viz-1)">{String(i + 1).padStart(2, "0")}</span>
+                    <h3 className="text-sm font-semibold leading-snug">{p.problem}</h3>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{p.fix}</p>
+                  <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
+                    {p.proof.map((pr) =>
+                      pr.href ? (
+                        <a
+                          key={pr.label}
+                          href={pr.href}
+                          {...(pr.href.startsWith("http") && { target: "_blank", rel: "noopener noreferrer" })}
+                          className="rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+                        >
+                          {pr.label}
+                        </a>
+                      ) : (
+                        <span key={pr.label} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                          {pr.label}
+                        </span>
+                      ),
+                    )}
+                  </div>
                 </div>
               </BlurFade>
             ))}
