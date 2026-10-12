@@ -5,7 +5,7 @@ An AI clone that answers questions about my portfolio and gives voice-AI career 
 | File | Job |
 |---|---|
 | `stt.py` | Sarvam `saaras:v4` (Hindi/Marathi/English auto-detect) → Deepgram `nova-3` multi → Groq `whisper-large-v3` |
-| `llm.py` | Groq `openai/gpt-oss-120b` → `openai/gpt-oss-20b` → LiveKit Inference `gpt-4.1-mini` |
+| `llm.py` | Groq `openai/gpt-oss-120b` → LiveKit Inference `gpt-4.1-mini` → Groq `openai/gpt-oss-20b` (ordered by how well each follows the prompt) |
 | `tts.py` | One chain per language. en: ElevenLabs Flash v2.5 → Sarvam → Cartesia → Orpheus; hi: Sarvam → ElevenLabs → Cartesia; mr: Sarvam → Cartesia |
 | `brain.py` | Persona, language rules, guardrails and everything the agent knows. Keep it in sync with the site. |
 | `agent.py` | LiveKit entrypoint: Krisp noise cancellation, turn handling, per-reply language, 5-minute cap, hang-up after 45 s of silence, no recording |
@@ -18,7 +18,7 @@ Every provider except LiveKit and Groq is optional: an engine without its key is
 |---|---|---|
 | Orchestration + agent hosting | LiveKit Cloud **Build** plan | 1,000 agent-minutes/month, 5 concurrent calls, 1 deployed agent, no card |
 | STT + TTS (Indian languages) | Sarvam AI | one-time signup credits (₹100–₹1,000), never expire |
-| LLM + fallback STT | Groq | ~1,000 LLM requests/day per model, ~2,000 Whisper requests/day |
+| LLM + fallback STT | Groq | gpt-oss only: 8,000 tokens/min and 200,000 tokens/day per model (well under 100 turns/day); ~2,000 Whisper requests/day |
 | TTS fallbacks | LiveKit Inference, Groq Orpheus | Build-plan inference credits; ~100 Orpheus requests/day |
 | Noise cancellation | LiveKit Krisp BVC | reported as included on Build; `NOISE_CANCELLATION=0` turns it off |
 | Website + token API | Vercel Hobby | free |
