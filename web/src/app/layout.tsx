@@ -25,11 +25,38 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(DATA.url),
   title: {
-    default: `${DATA.name} — ${DATA.title}`,
+    // What a recruiter types: role + stack + languages. Google shows ~60 characters.
+    default: `${DATA.name} — Voice AI Engineer · LiveKit, Hindi & Marathi voice agents`,
     template: `%s | ${DATA.name}`,
   },
-  description: DATA.description,
-  keywords: ["Hassan Kazi", "voice AI engineer", "LiveKit Agents", "Hindi speech recognition", "Indic TTS", "real-time voice agents", "Marathi ASR", "WebRTC"],
+  description:
+    "Voice AI & AI engineer, Bengaluru. I build real-time voice agents: LiveKit, Twilio/Exotel/Vapi telephony, Hindi & Marathi STT/TTS. Talk to my AI clone.",
+  keywords: [
+    "Hassan Kazi",
+    "voice AI engineer",
+    "hire voice AI engineer",
+    "AI engineer India",
+    "AI engineer Bengaluru",
+    "LiveKit developer",
+    "LiveKit Agents",
+    "voice agent developer",
+    "conversational AI engineer",
+    "Hindi voice agent",
+    "Marathi speech recognition",
+    "Indic TTS",
+    "Twilio voice AI",
+    "Exotel",
+    "Vapi",
+    "real-time voice agents",
+    "WebRTC",
+    "LLM tool calling",
+  ],
+  category: "technology",
+  // Set NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION / NEXT_PUBLIC_BING_SITE_VERIFICATION in Vercel to verify ownership.
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+    other: process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION ? { "msvalidate.01": process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION } : undefined,
+  },
   authors: [{ name: DATA.name, url: DATA.url }],
   creator: DATA.name,
   alternates: {

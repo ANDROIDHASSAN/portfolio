@@ -12,6 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: DATA.url, changeFrequency: "weekly", priority: 1 },
     { url: `${DATA.url}/blog`, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${DATA.url}/hire`, changeFrequency: "monthly", priority: 0.9 },
     { url: `${DATA.url}/resume`, changeFrequency: "monthly", priority: 0.8 },
     ...posts,
   ];

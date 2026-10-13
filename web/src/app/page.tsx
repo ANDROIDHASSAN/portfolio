@@ -56,17 +56,50 @@ export default async function Page() {
       };
     }),
   );
+  // One graph: the site, this page as a profile page, and the person it is about (Google's ProfilePage pattern).
+  const person = {
+    "@type": "Person",
+    "@id": `${DATA.url}/#person`,
+    name: DATA.name,
+    givenName: "Hassan",
+    familyName: "Kazi",
+    jobTitle: ["Voice AI Engineer", "AI Engineer"],
+    description: DATA.description,
+    url: DATA.url,
+    image: `${DATA.url}/me.webp`,
+    email: `mailto:${DATA.contact.email}`,
+    address: { "@type": "PostalAddress", addressLocality: "Bengaluru", addressRegion: "Karnataka", addressCountry: "IN" },
+    hasOccupation: {
+      "@type": "Occupation",
+      name: "Voice AI Engineer",
+      occupationLocation: { "@type": "Country", name: "India" },
+      skills: DATA.skills.map((s) => s.name).join(", "),
+    },
+    knowsAbout: [
+      "Voice AI", "Conversational AI", "Real-time voice agents", "Speech recognition", "Text-to-speech",
+      "LiveKit Agents", "WebRTC", "Telephony", "Twilio", "Exotel", "Vapi", "Keyterm prompting",
+      "Barge-in and turn detection", "Hindi", "Marathi", "Large language models", "LLM tool calling", "Prompt engineering",
+    ],
+    knowsLanguage: ["en", "hi", "mr"],
+    worksFor: { "@type": "Organization", name: "InCruiter", url: "https://incruiter.com" },
+    alumniOf: DATA.education.map((e) => ({ "@type": "CollegeOrUniversity", name: e.school, ...(e.href && { url: e.href }) })),
+    award: DATA.achievements.map((a) => a.title),
+    sameAs: [DATA.contact.social.GitHub.url, DATA.contact.social.LinkedIn.url, "https://github.com/ANDROIDHASSAN/portfolio"],
+  };
   const personJsonLd = JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "Person",
-    name: DATA.name,
-    jobTitle: DATA.title,
-    url: DATA.url,
-    email: `mailto:${DATA.contact.email}`,
-    address: { "@type": "PostalAddress", addressLocality: "Bengaluru", addressCountry: "IN" },
-    knowsAbout: ["Voice AI", "Speech recognition", "Text-to-speech", "LiveKit Agents", "WebRTC", "Indic languages", "LLMs"],
-    worksFor: { "@type": "Organization", name: "InCruiter", url: "https://incruiter.com" },
-    sameAs: [DATA.contact.social.GitHub.url, DATA.contact.social.LinkedIn.url],
+    "@graph": [
+      { "@type": "WebSite", "@id": `${DATA.url}/#website`, url: DATA.url, name: DATA.name, inLanguage: "en", publisher: { "@id": person["@id"] } },
+      {
+        "@type": "ProfilePage",
+        "@id": `${DATA.url}/#profile`,
+        url: DATA.url,
+        name: `${DATA.name} — Voice AI Engineer`,
+        isPartOf: { "@id": `${DATA.url}/#website` },
+        mainEntity: { "@id": person["@id"] },
+      },
+      person,
+    ],
   }).replace(/</g, "\\u003c");
 
   return (
@@ -117,8 +150,8 @@ export default async function Page() {
                   >
                     <Mic className="size-4" /> Talk to my AI
                   </a>
-                  <Link href="/resume" className="inline-flex items-center px-2 py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
-                    View online
+                  <Link href="/hire" className="inline-flex items-center px-2 py-2 text-sm text-muted-foreground underline-offset-4 hover:underline">
+                    Hire me →
                   </Link>
                 </div>
               </BlurFade>
