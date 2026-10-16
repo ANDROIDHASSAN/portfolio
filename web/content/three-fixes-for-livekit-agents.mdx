@@ -4,7 +4,7 @@ publishedAt: "2026-10-11"
 summary: "A recording that showed the wrong duration, a shutdown that could hang forever, and a stray XML tag that split TTS output in the wrong place. Three small upstream PRs to livekit/agents, each with a test that fails on main."
 ---
 
-I run production voice agents on [LiveKit Agents](https://github.com/livekit/agents). When something breaks I'd rather fix it upstream than patch around it locally. These are my first three PRs. All three were in review when I wrote this; the live status is on [my home page](/#open-source).
+I run production voice agents on [LiveKit Agents](https://github.com/livekit/agents). When something breaks I'd rather fix it upstream than patch around it locally. These are my first three PRs. All three were in review when I wrote this. Update, October 2026: #7741 and #7742 are merged; the live status of every PR is on [my home page](/#open-source).
 
 Each one follows the same rule: **reproduce it in a test that fails on `main`, then make the smallest change that passes it.**
 

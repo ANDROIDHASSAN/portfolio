@@ -23,6 +23,7 @@ const arxiv = (id: string) => ({ title: `arXiv ${id}`, href: `https://arxiv.org/
 const REPO = "https://github.com/ANDROIDHASSAN/portfolio";
 const code = (file: string) => ({ label: `code: ${file}`, href: `${REPO}/blob/main/${file}` });
 const prod = (where: string) => ({ label: `production: ${where}`, href: "" });
+const gh = (repo: string) => ({ title: "Code", href: `https://github.com/ANDROIDHASSAN/${repo}` });
 
 export const DATA = {
   name: "Hassan Kazi",
@@ -34,7 +35,7 @@ export const DATA = {
   description:
     "Voice AI Research Engineer. I build real-time voice agents and I'm chasing one question: why do voice agents break on real Indian speech, and how do we fix it?",
   summary:
-    "I lead the AI & real-time stack behind [InCruiter](https://incruiter.com)'s voice interviewers, scaled to **1,000+ concurrent interviews in 42+ languages**. In production I root-caused why multilingual interviews broke: English-only text guards failed on Devanagari (0.39 vs a 0.5 match threshold) and Marathi STT hallucinated in 10 of 15 turns, then shipped script-aware, feature-flagged fixes.\n\nNow I'm rebuilding the speech stack [from the papers up](/#papers), starting with Hindi and Marathi, and sending fixes upstream to [livekit/agents](/#open-source). Before InCruiter I built WhatsApp automation and real-time voice agents at [Anantkamal Software Labs](https://anantkamalsoftwarelabs.com) in Nashik, and worked as an AI engineer at myRide (Boston, remote) on autonomous-vehicle rule validation. Also a [9× hackathon winner](/#achievements).",
+    "I lead the AI & real-time stack behind [InCruiter](https://incruiter.com)'s voice interviewers, scaled to **1,000+ concurrent interviews in 42+ languages**. In production I root-caused why multilingual interviews broke: English-only text guards failed on Devanagari (0.39 vs a 0.5 match threshold) and Marathi STT hallucinated in 10 of 15 turns, then shipped script-aware, feature-flagged fixes.\n\nNow I'm rebuilding the speech stack [from the papers up](/#papers), starting with Hindi and Marathi, and fixing the frameworks voice agents run on: [16 merged PRs](/#open-source), 7 of them in LiveKit. Before InCruiter I built WhatsApp automation and real-time voice agents at [Anantkamal Software Labs](https://anantkamalsoftwarelabs.com) in Nashik, and worked as an AI engineer at myRide (Boston, remote) on autonomous-vehicle rule validation. Also a [9× hackathon winner](/#achievements).",
   avatarUrl: "/me.webp",
   // Printed from /resume (this file's data) by `pnpm resume:pdf`; rerun it after editing anything below.
   resumePdf: "/hassan-kazi-resume.pdf",
@@ -332,39 +333,35 @@ export const DATA = {
       proof: [code("web/src/app/api/voice-token/route.ts"), code("voice-agent/agent.py")],
     },
   ],
-  // Status and diff size are fetched live from GitHub (src/lib/github.ts); test counts are from each PR's description.
+  // Merged PRs only. State and diff size are fetched live from GitHub (src/lib/github.ts).
   openSource: [
-    {
-      repo: "livekit/agents",
-      pr: 7740,
-      title: "feat(voice): add bit_rate and constant_bit_rate options to RecorderIO",
-      description: "Opus VBR made macOS show a 3:32 recording as 6:53+. Adds bit_rate / constant_bit_rate so recordings can match Egress (constant 128 kb/s).",
-      tests: "34 tests passed",
-    },
-    {
-      repo: "livekit/agents",
-      pr: 7741,
-      title: "fix(voice): don't hang or buffer audio when the recorder encoder fails",
-      description: "A failed encoder setup made AgentSession.aclose() hang forever and queued audio in memory for the rest of the session.",
-      tests: "4,966 unit tests passed",
-    },
-    {
-      repo: "livekit/agents",
-      pr: 7742,
-      title: "fix(tokenize): ignore stray closing tags in the XML depth check",
-      description: "A closing tag without its opener drove a depth counter negative and split <emotion> spans across TTS chunks. One-line fix.",
-      tests: "109 tests passed",
-    },
+    { repo: "livekit/agents", pr: 7741, title: "fix(voice): don't hang or buffer audio when the recorder encoder fails", description: "A failed encoder setup made AgentSession.aclose() hang forever and queued audio in memory for the rest of the session.", writeup: true },
+    { repo: "livekit/agents", pr: 7742, title: "fix(tokenize): ignore stray closing tags in the XML depth check", description: "A closing tag without its opener drove a depth counter negative and split <emotion> spans across TTS chunks. One-line fix.", writeup: true },
+    { repo: "livekit/python-sdks", pr: 860, title: "fix(api): report a missing sha256 claim in WebhookReceiver", description: "A webhook token without a body hash was rejected as \"hash mismatch\", because the verifier fills the missing claim with an empty string." },
+    { repo: "livekit/python-sdks", pr: 861, title: "fix(api): keep the base path of the server URL in Twirp requests", description: "Since region failover, a server URL behind a reverse-proxy path lost its path, so every API call went to the wrong place." },
+    { repo: "livekit/python-sdks", pr: 862, title: "fix(rtc): keep an AudioMixer input alive after a read timeout", description: "One late frame cancelled an async-generator input, which closed it: the mixer dropped the rest of that stream's audio." },
+    { repo: "livekit/python-sdks", pr: 864, title: "fix(rtc): use the right plane layout for I420A, I422 and NV12 frames", description: "Chroma was sized width × width, so a 640×480 NV12 frame copied 512,000 bytes instead of 460,800 out of native memory." },
+    { repo: "livekit/python-sdks", pr: 865, title: "fix(api): support the canSubscribeMetrics video grant", description: "Python couldn't mint the grant, and TokenVerifier silently dropped it from tokens minted by other SDKs." },
+    { repo: "KoljaB/RealtimeSTT", pr: 329, title: "fix: add the final period when a transcript ends in a vowel sign", description: "Hindi, Bengali and Tamil transcripts lost their full stop whenever the last letter carried a vowel sign (matra)." },
+    { repo: "KoljaB/RealtimeSTT", pr: 330, title: "fix: don't crash feed_audio on a chunk too short to resample", description: "An empty or sub-sample audio chunk raised ZeroDivisionError into the caller's streaming loop." },
+    { repo: "KoljaB/RealtimeSTT", pr: 332, title: "fix: start the server with the client's empty language", description: "The client dropped language=\"\", so an autostarted server fell back to English instead of auto-detecting." },
+    { repo: "KoljaB/RealtimeTTS", pr: 383, title: "fix: send ElevenlabsEngine voice settings with each request", description: "Stability, clarity and style were stored but never sent after the move to the streaming endpoint." },
+    { repo: "KoljaB/stream2sentence", pr: 16, title: "Split sentences at the Urdu full stop (۔)", description: "Urdu text streamed to TTS as one long sentence." },
+    { repo: "KoljaB/stream2sentence", pr: 17, title: "Let the nltk+rule-based tokenizer split at । 。 ؟ ۔", description: "The default tokenizer never split Hindi, Chinese, Arabic or Urdu text into sentences." },
+    { repo: "KoljaB/stream2sentence", pr: 18, title: "Don't add a space when joining short Chinese and Japanese sentences", description: "Merging short CJK sentences inserted a space that doesn't belong in those scripts." },
+    { repo: "OHF-Voice/piper1-gpl", pr: 328, title: "Phonemize Hebrew in infer_torch instead of falling through to espeak-ng", description: "A Hebrew voice was checked with different phonemes than it was trained on, with no error." },
+    { repo: "mastra-ai/mastra", pr: 27102, title: "fix(voice-sarvam): use the configured listening model in listen()", description: "SarvamVoice.listen() ignored the constructor's model, language and mode and always sent the defaults." },
   ],
-  // All planned: reimplemented from scratch, adapted to Hindi/Marathi. Repos go public when they ship.
+  // Reimplemented from scratch, adapted to Hindi/Marathi. Public ones link their repo; numbers are from their READMEs.
   papers: [
-    { title: "GPT + BPE Tokenizer", dates: "LLM", location: "Vaswani et al. 2017 · Sennrich et al. 2016", description: "Target: 50M-param Hinglish GPT; ~3× fewer tokens on Hindi.", links: [arxiv("1706.03762"), arxiv("1508.07909")] },
-    { title: "Quantization + FlashAttention", dates: "LLM", location: "Dettmers et al. 2022 · Frantar et al. 2023 · Dao et al. 2022", description: "Target: INT8/INT4 + a fused Triton kernel.", links: [arxiv("2208.07339"), arxiv("2210.17323"), arxiv("2205.14135")] },
-    { title: "LoRA + DPO + GRPO", dates: "LLM", location: "Hu et al. 2022 · Rafailov et al. 2023 · Shao et al. 2024", description: "Target: SFT → preference → RL on a Hindi 0.5B model.", links: [arxiv("2106.09685"), arxiv("2305.18290"), arxiv("2402.03300")] },
-    { title: "Speculative Decoding", dates: "LLM", location: "Leviathan et al. 2023", description: "Target: ~2× faster replies.", links: [arxiv("2211.17192")] },
+    { title: "Transformer", dates: "LLM", location: "Vaswani et al. 2017 · public", description: "English → Hindi on the IITB corpus: 12.7 sacreBLEU, 39.3 chrF2 on the WAT test set.", links: [gh("attention-is-all-you-need-hindi"), arxiv("1706.03762")] },
+    { title: "GPT + BPE Tokenizer", dates: "LLM", location: "Radford et al. 2019 · Sennrich et al. 2016 · public", description: "12M-param GPT with RoPE, SwiGLU, KV cache and LoRA; its 4,096-token BPE needs 3.9× fewer tokens than GPT-4's on Hindi.", links: [gh("gpt-from-scratch"), arxiv("1508.07909")] },
+    { title: "Quantization + FlashAttention", dates: "LLM", location: "Dettmers et al. 2022 · Frantar et al. 2023 · Dao et al. 2022 · public", description: "On Qwen2.5-0.5B (WikiText-2 perplexity 12.98): LLM.int8() 13.02, 4-bit GPTQ 14.00 vs 15.46 round-to-nearest.", links: [gh("quant-flash"), arxiv("2208.07339"), arxiv("2210.17323"), arxiv("2205.14135")] },
+    { title: "LoRA + DPO + GRPO", dates: "LLM", location: "Hu et al. 2022 · Rafailov et al. 2023 · Shao et al. 2024 · public", description: "Code complete and checked: teach Qwen2.5-0.5B to follow Hindi instructions and answer in Hindi. Training runs next.", links: [gh("post-training"), arxiv("2106.09685"), arxiv("2305.18290"), arxiv("2402.03300")] },
+    { title: "Speculative Decoding", dates: "LLM", location: "Leviathan et al. 2023 · public", description: "1.5B target, 0.5B draft: 3.4 tokens per target pass at γ = 4, but 0.8× wall-clock on an M1 GPU. Measured, not tuned.", links: [gh("speculative-decoding"), arxiv("2211.17192")] },
     { title: "Prompt-Injection Defense", dates: "LLM", location: "Greshake et al. 2023", description: "Target: 200+ spoken attacks.", links: [arxiv("2302.12173")] },
-    { title: "Whisper", dates: "ASR", location: "Radford et al. 2022", description: "Target: Hindi fine-tune.", links: [arxiv("2212.04356")] },
-    { title: "Conformer + RNN-T", dates: "ASR", location: "Gulati et al. 2020 · Graves 2012", description: "Target: streaming ASR, ablation reproduced.", links: [arxiv("2005.08100"), arxiv("1211.3711")] },
+    { title: "Whisper", dates: "ASR", location: "Radford et al. 2022 · public", description: "Loads OpenAI's weights: 14.2% WER on FLEURS English. whisper-tiny fine-tuned on Hindi: 138.9% → 49.2% WER.", links: [gh("whisper-from-scratch"), arxiv("2212.04356")] },
+    { title: "Conformer + RNN-T", dates: "ASR", location: "Gulati et al. 2020 · Graves 2012 · public", description: "Code complete; the transducer loss is checked against brute force. Training runs next.", links: [gh("conformer-rnnt"), arxiv("2005.08100"), arxiv("1211.3711")] },
     { title: "wav2vec 2.0", dates: "ASR", location: "Baevski et al. 2020", description: "Target: self-supervised on Hindi audio.", links: [arxiv("2006.11477")] },
     { title: "VITS + HiFi-GAN", dates: "TTS", location: "Kim et al. 2021 · Kong et al. 2020", description: "Target: a Hindi voice.", links: [arxiv("2106.06103"), arxiv("2010.05646")] },
     { title: "StyleTTS 2", dates: "TTS", location: "Li et al. 2023", description: "Target: expressive Hindi.", links: [arxiv("2306.07691")] },
@@ -375,7 +372,7 @@ export const DATA = {
   achievements: [
     { title: "9× Hackathon Winner", detail: "" },
     { title: "CodeChef 3-Star", detail: "Top 15% globally; 1st in October Long Challenge among 8,000+ coders" },
-    { title: "30+ merged open-source PRs", detail: "Across 15 repos, Hacktoberfest 2022–2024" },
+    { title: "16 merged open-source PRs", detail: "7 in LiveKit (agents, python-sdks), plus RealtimeSTT/TTS, Piper and Mastra, since Oct 2026" },
     { title: "Technical Lead, Leads Community", detail: "2024 – present · 5+ workshops for 200+ students; 4 hackathons with 1,500+ participants" },
   ],
   certifications: {

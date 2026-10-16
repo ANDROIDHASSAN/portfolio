@@ -1,5 +1,4 @@
 import { DATA, STATUS_LABEL } from "@/data/resume";
-import { getPrStatus } from "@/lib/github";
 import { ArrowLeft, Download } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -45,8 +44,11 @@ function Row({ left, right, sub }: { left: React.ReactNode; right?: string; sub?
   );
 }
 
-export default async function Resume() {
-  const prs = await Promise.all(DATA.openSource.map(async (pr) => ({ ...pr, live: await getPrStatus(pr.repo, pr.pr) })));
+export default function Resume() {
+  const byRepo = new Map<string, (typeof DATA.openSource)[number][]>();
+  for (const pr of DATA.openSource) byRepo.set(pr.repo, [...(byRepo.get(pr.repo) ?? []), pr]);
+  const repos = [...byRepo];
+  const publicPapers = DATA.papers.filter((p) => p.links[0].title === "Code").length;
   const built = DATA.projects.filter((p) => p.status !== "planned");
   const planned = DATA.projects.filter((p) => p.status === "planned");
   const links = [
@@ -105,16 +107,30 @@ export default async function Resume() {
           ))}
           <p>
             <span className="font-semibold text-neutral-950">Planned: </span>
-            {planned.map((p) => p.title).join(", ")}, and {DATA.papers.length} paper reimplementations in PyTorch. Targets, not results yet.
+            {planned.map((p) => p.title).join(", ")}. Targets, not results yet.
+          </p>
+          <p>
+            <span className="font-semibold text-neutral-950">Papers from scratch in PyTorch: </span>
+            {publicPapers} public with measured results on <a href={`${DATA.url}/#papers`} className="underline decoration-neutral-300 underline-offset-2">the site</a>, e.g. Transformer En→Hi 12.7 BLEU, Whisper Hindi fine-tune 138.9% → 49.2% WER, GPTQ 4-bit on Qwen2.5-0.5B.
           </p>
         </Section>
 
-        <Section title="Open source · livekit/agents">
-          {prs.map((pr) => (
-            <div key={pr.pr}>
-              <Row left={`#${pr.pr} ${pr.title}`} right={pr.live.label.replace(/^[●✓]\s*/, "")} />
-              {/* Hidden in the PDF to keep it to one page; the PR titles already say what each fix does. */}
-              <p className="mt-0.5 print:hidden">{pr.description}</p>
+        <Section title={`Open source · ${DATA.openSource.length} merged PRs`}>
+          {/* One paragraph in the PDF to keep it to one page. */}
+          <p className="hidden print:block">
+            {repos.map(([repo, prs]) => `${repo} ${prs.map((pr) => `#${pr.pr}`).join(" ")}`).join(" · ")}. Each one starts with a test that fails on main.
+          </p>
+          {repos.map(([repo, prs]) => (
+            <div key={repo} className="print:hidden">
+              <Row
+                left={repo}
+                sub={prs.map((pr) => (
+                  <a key={pr.pr} href={`https://github.com/${repo}/pull/${pr.pr}`} className="mr-1.5 hover:text-neutral-900">#{pr.pr}</a>
+                ))}
+                right={`${prs.length} merged`}
+              />
+              {/* Titles hidden in the PDF to keep it to one page. */}
+              <p className="mt-0.5 print:hidden">{prs.map((pr) => pr.title).join(" · ")}</p>
             </div>
           ))}
         </Section>

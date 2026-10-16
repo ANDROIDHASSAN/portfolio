@@ -13,7 +13,7 @@ export async function getPrStatus(repo: string, number: number): Promise<PrStatu
     const label = pr.merged_at ? "✓ Merged" : pr.state === "closed" ? "Closed" : "● Open · in review";
     return { label, additions: pr.additions, deletions: pr.deletions, files: pr.changed_files };
   } catch {
-    // Rate limit or offline build: fall back to the last known state rather than failing the page.
-    return { label: "● In review" };
+    // Rate limit or offline build: every listed PR is merged, so that is the last known state.
+    return { label: "✓ Merged" };
   }
 }

@@ -47,11 +47,11 @@ export default async function Page() {
       return {
         title: pr.title,
         dates: `${pr.repo} #${pr.pr}`,
-        location: `${live.label}${diff} · ${pr.tests}`,
+        location: `${live.label}${diff}`,
         description: pr.description,
         links: [
           { title: `PR #${pr.pr}`, icon: <Icons.github className="h-4 w-4" />, href: `https://github.com/${pr.repo}/pull/${pr.pr}` },
-          { title: "Write-up", href: "/blog/three-fixes-for-livekit-agents" },
+          ...("writeup" in pr ? [{ title: "Write-up", href: "/blog/three-fixes-for-livekit-agents" }] : []),
         ],
       };
     }),
@@ -357,8 +357,8 @@ export default async function Page() {
             title="Fixes sent upstream"
             blurb={
               <>
-                Bugs I hit running voice agents in production, fixed in{" "}
-                <span className="text-foreground font-medium">livekit/agents</span>. All three are in review.
+                {DATA.openSource.length} merged fixes in the frameworks voice agents run on, 7 of them in{" "}
+                <span className="text-foreground font-medium">LiveKit</span>. Each one started with a test that fails on main.
               </>
             }
             items={openSource}
@@ -372,7 +372,7 @@ export default async function Page() {
           <TimelineSection
             label="Papers"
             title="Rebuilding the stack from the papers up"
-            blurb={`${DATA.papers.length} reimplementations from scratch, adapted to Hindi and Marathi. All planned: every arXiv link is live, and each repo goes public when it ships.`}
+            blurb={`${DATA.papers.length} reimplementations from scratch, adapted to Hindi and Marathi. ${DATA.papers.filter((p) => p.links.length > 0 && p.links[0].title === "Code").length} are public with code and measured numbers; the rest are planned, and each repo goes public when it ships.`}
             items={DATA.papers}
             marker={(p) => p.dates ?? ""}
           />

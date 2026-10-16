@@ -71,8 +71,8 @@ export default function Hire() {
             </li>
           ))}
           <li className="text-sm">
-            <span className="font-semibold">3 fixes sent to livekit/agents</span>
-            <span className="text-muted-foreground"> · in review · </span>
+            <span className="font-semibold">{DATA.openSource.length} merged open-source fixes, 7 in LiveKit</span>
+            <span className="text-muted-foreground"> · agents, python-sdks, RealtimeSTT/TTS, Piper, Mastra · </span>
             <Link href="/#open-source" className="underline-offset-4 hover:underline">details</Link>
           </li>
         </ul>

@@ -18,6 +18,12 @@ ${DATA.work.map((w) => `- ${w.title}, ${w.company} (${w.location})${w.start ? `,
 ## Projects
 ${DATA.projects.map((p) => `- ${p.title} [${STATUS_LABEL[p.status]}]: ${p.description.replace(/\*\*/g, "").replace(/\n+/g, " ")}`).join("\n")}
 
+## Open source (${DATA.openSource.length} merged PRs)
+${DATA.openSource.map((pr) => `- ${pr.repo}#${pr.pr} ${pr.title}: ${pr.description}`).join("\n")}
+
+## Papers reimplemented from scratch
+${DATA.papers.map((p) => `- ${p.title} (${p.location}): ${p.description}${p.links[0].title === "Code" ? ` ${p.links[0].href}` : ""}`).join("\n")}
+
 ## Voice AI playbook
 ${DATA.playbook.map((p) => `- ${p.problem}: ${p.fix}`).join("\n")}
 
