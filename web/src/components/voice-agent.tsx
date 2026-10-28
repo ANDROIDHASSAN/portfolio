@@ -19,10 +19,54 @@ type Line = { id: string; who: "you" | "ai"; text: string; interim: boolean };
 
 const LABEL: Record<string, string> = { listening: "Listening", thinking: "Thinking", speaking: "Speaking" };
 const AGENT_JOIN_TIMEOUT_MS = 25_000; // a sleeping free-tier agent takes 10–20 s to wake up
+const WAKE_S = 20; // countdown shown while it wakes: the top of LiveKit's 10–20 s cold start
 const CALL_LIMIT_S = 5 * 60; // matches SESSION_LIMIT_S in portfolio/voice-agent/agent.py
 const HINTS = ["What did you build at InCruiter?", "मुझे voice AI internship कैसे मिलेगी?", "मला roadmap सांगा"];
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+// Wakes the free-tier agent out of its 10–20 s cold start before the visitor clicks (see api/voice-token).
+// ponytail: guessed 60 s between wake-ups; LiveKit doesn't say how soon an idle agent scales back to zero.
+let lastWarm = 0;
+function warmAgent() {
+  if (Date.now() - lastWarm < 60_000) return;
+  lastWarm = Date.now();
+  fetch("/api/voice-token?warm", { method: "POST" }).catch(() => {});
+}
+
+/** Whole seconds since the calling component mounted. */
+function useSeconds() {
+  const [s, setS] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const t = setInterval(() => setS(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return s;
+}
+
+// Mounted only once the agent has joined, so it counts the call itself (agent.py's limit starts at the join).
+function CallClock() {
+  const s = useSeconds();
+  return <span className="tabular-nums">{clock(s)} / {clock(CALL_LIMIT_S)}</span>;
+}
+
+// aria-hidden: a screen reader announcing every second is noise; the status pill already says it's waking up.
+function WakeCountdown() {
+  const left = Math.max(0, WAKE_S - useSeconds());
+  return (
+    <div aria-hidden className="flex h-16 flex-col items-center justify-center">
+      {left > 0 ? (
+        <>
+          <span className="font-mono text-4xl font-semibold tabular-nums text-foreground">{left}</span>
+          <span className="text-[11px] text-muted-foreground">seconds · free servers nap when idle</span>
+        </>
+      ) : (
+        <span className="text-sm text-muted-foreground">Almost there…</span>
+      )}
+    </div>
+  );
+}
 
 function Transcript({ lines }: { lines: Line[] }) {
   const box = useRef<HTMLDivElement>(null);
@@ -60,7 +104,6 @@ function CallView({ onEnd, onFail, onLines }: { onEnd: () => void; onFail: (msg:
   const agentVolume = useTrackVolume(audioTrack);
   const myVolume = useTrackVolume(microphoneTrack?.track as LocalAudioTrack | undefined);
   const transcriptions = useTranscriptions();
-  const [elapsed, setElapsed] = useState(0);
 
   const lines: Line[] = transcriptions
     .filter((t) => t.text.trim())
@@ -81,11 +124,6 @@ function CallView({ onEnd, onFail, onLines }: { onEnd: () => void; onFail: (msg:
     return () => clearTimeout(t);
   }, [agent, onFail]);
 
-  useEffect(() => {
-    const started = Date.now();
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   // Feed the page's signal creature: it swims to this card and moves with whoever is talking.
   useEffect(() => {
@@ -104,16 +142,24 @@ function CallView({ onEnd, onFail, onLines }: { onEnd: () => void; onFail: (msg:
       <div className="flex items-center gap-2 rounded-full border border-border px-3 py-1 font-mono text-[11px] text-muted-foreground">
         <span className={`size-1.5 rounded-full ${agent ? "bg-emerald-500" : "animate-pulse bg-amber-500"}`} />
         <span className="text-foreground" aria-live="polite">{agent ? LABEL[state] ?? "Connecting" : "Waking up my AI…"}</span>
-        <span aria-hidden>·</span>
-        <span className="tabular-nums">{clock(elapsed)} / {clock(CALL_LIMIT_S)}</span>
+        {agent && (
+          <>
+            <span aria-hidden>·</span>
+            <CallClock />
+          </>
+        )}
       </div>
-      <BarVisualizer
-        state={state}
-        track={audioTrack}
-        barCount={9}
-        options={{ minHeight: 10 }}
-        className="flex h-16 w-56 items-center justify-center gap-1.5 [&>.lk-audio-bar]:w-2.5 [&>.lk-audio-bar]:rounded-full [&>.lk-audio-bar]:bg-muted-foreground/25 [&>.lk-audio-bar]:transition-colors [&>.lk-audio-bar[data-lk-highlighted=true]]:bg-(--viz-1)"
-      />
+      {agent ? (
+        <BarVisualizer
+          state={state}
+          track={audioTrack}
+          barCount={9}
+          options={{ minHeight: 10 }}
+          className="flex h-16 w-56 items-center justify-center gap-1.5 [&>.lk-audio-bar]:w-2.5 [&>.lk-audio-bar]:rounded-full [&>.lk-audio-bar]:bg-muted-foreground/25 [&>.lk-audio-bar]:transition-colors [&>.lk-audio-bar[data-lk-highlighted=true]]:bg-(--viz-1)"
+        />
+      ) : (
+        <WakeCountdown />
+      )}
       {lines.length ? (
         <Transcript lines={lines} />
       ) : (
@@ -156,6 +202,9 @@ export function VoiceAgent({ enabled }: { enabled: boolean }) {
     setError(msg);
     setConn(null);
   }, []);
+  useEffect(() => {
+    if (enabled) warmAgent();
+  }, [enabled]);
 
   async function start() {
     setBusy(true);
@@ -203,6 +252,8 @@ export function VoiceAgent({ enabled }: { enabled: boolean }) {
       <button
         type="button"
         onClick={start}
+        onPointerEnter={enabled ? warmAgent : undefined}
+        onFocus={enabled ? warmAgent : undefined}
         disabled={!enabled || busy}
         className="inline-flex items-center gap-2.5 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
       >

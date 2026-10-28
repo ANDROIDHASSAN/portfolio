@@ -85,6 +85,10 @@ server.setup_fnc = prewarm
 
 @server.rtc_session(agent_name=AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
+    if ctx.job.room.name.startswith("warmup-"):
+        # The page woke this worker out of a free-tier cold start (web/src/app/api/voice-token/route.ts). Never join.
+        ctx.shutdown("warm-up")
+        return
     vad = ctx.proc.userdata["vad"]
     agent = HassanAgent(build_tts())
     session = AgentSession(
