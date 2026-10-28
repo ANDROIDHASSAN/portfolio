@@ -8,6 +8,7 @@ const WARMS_PER_HOUR = 20;
 // ponytail: in-memory per-IP limit, reset whenever a serverless instance recycles. Enough to stop casual
 // abuse of the free tiers; move to Vercel KV/Upstash if real abuse shows up.
 const hits = new Map<string, number[]>();
+let lastWarm = 0;
 
 function rateLimited(key: string, limit: number): boolean {
   const now = Date.now();
@@ -35,8 +36,13 @@ export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const id = crypto.randomUUID().slice(0, 8);
   if (new URL(req.url).searchParams.has("warm")) {
-    if (!rateLimited(`warm:${ip}`, WARMS_PER_HOUR)) {
-      await new AgentDispatchClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET).createDispatch(`warmup-${id}`, AGENT_NAME);
+    // One warm worker serves everyone, so at most one wake-up per 30 s per instance whatever the IPs. Best effort:
+    // a failed wake-up just means a cold start.
+    if (Date.now() - lastWarm > 30_000 && !rateLimited(`warm:${ip}`, WARMS_PER_HOUR)) {
+      lastWarm = Date.now();
+      await new AgentDispatchClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        .createDispatch(`warmup-${id}`, AGENT_NAME)
+        .catch(() => {});
     }
     return new Response(null, { status: 204 });
   }
